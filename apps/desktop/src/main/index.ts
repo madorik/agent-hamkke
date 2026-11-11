@@ -41,16 +41,16 @@ let locale: Locale = 'en' // app ready 뒤 connector.json·시스템 언어로 �
 const TEXT = {
   ko: {
     nodeMissing: 'node 를 찾지 못했어요. Node.js 24 이상을 설치해 주세요.',
-    claudeMissing: 'Claude Code(claude 명령)를 찾지 못했어요.',
-    claudeMissingInstall: 'Claude Code(claude 명령)를 찾지 못했어요. 먼저 설치해 주세요.',
+    agentMissing: (name: string, bin: string) => `${name}(${bin} 명령)를 찾지 못했어요.`,
+    agentMissingInstall: (name: string, bin: string) => `${name}(${bin} 명령)를 찾지 못했어요. 먼저 설치해 주세요.`,
     runnerCrashed: (sec: number, log: string) => `러너가 멈췄어요. ${sec}초 뒤 다시 시작해요. (로그: ${log})`,
     folderTitle: '에이전트가 일할 폴더',
     folderButton: '이 폴더에서 일하기',
   },
   en: {
     nodeMissing: 'Couldn’t find node. Please install Node.js 24 or later.',
-    claudeMissing: 'Couldn’t find Claude Code (the claude command).',
-    claudeMissingInstall: 'Couldn’t find Claude Code (the claude command). Please install it first.',
+    agentMissing: (name: string, bin: string) => `Couldn’t find ${name} (the ${bin} command).`,
+    agentMissingInstall: (name: string, bin: string) => `Couldn’t find ${name} (the ${bin} command). Please install it first.`,
     runnerCrashed: (sec: number, log: string) => `The runner stopped. Restarting in ${sec}s. (Log: ${log})`,
     folderTitle: 'Folder for your agent to work in',
     folderButton: 'Work in this folder',
@@ -169,8 +169,9 @@ let activeModel = ''
 
 function loadModelCache() {
   try {
-    const c = JSON.parse(readFileSync(join(profileDir(), 'models.json'), 'utf8')) as { models?: AgentModel[] }
-    if (Array.isArray(c.models)) agentModels = c.models
+    const c = JSON.parse(readFileSync(join(profileDir(), 'models.json'), 'utf8')) as { agentKind?: string; models?: AgentModel[] }
+    // 다른 에이전트의 목록이면 쓰지 않는다(Claude 모델을 Codex 에 고르지 않게)
+    if (Array.isArray(c.models) && agentOf(c.agentKind) === agentOf(readConnectorFile()?.agentKind)) agentModels = c.models
   } catch {
     /* 아직 없음 */
   }
@@ -219,19 +220,36 @@ function logRunner(line: string) {
 // 예전 방식(모든 Claude Code 세션에 커넥터를 붙이던 user 범위 MCP 등록)을 지운다.
 // 남아 있으면 아무 세션이나 열 때마다 '접속 중'으로 보이지만 메시지는 받지 못한다.
 // 이름을 바꾸기 전(agent-messenger)의 등록도 같이 지운다.
-async function removeLegacyRegistration(claude: string) {
-  let servers: Record<string, unknown> = {}
-  try {
-    servers = (JSON.parse(readFileSync(join(homedir(), '.claude.json'), 'utf8')) as { mcpServers?: Record<string, unknown> }).mcpServers ?? {}
-  } catch {
-    return
+async function removeLegacyRegistration(agent: AgentKindName, bin: string) {
+  let names: string[] = []
+  if (agent === 'claude-code') {
+    try {
+      names = Object.keys((JSON.parse(readFileSync(join(homedir(), '.claude.json'), 'utf8')) as { mcpServers?: Record<string, unknown> }).mcpServers ?? {})
+    } catch {
+      return
+    }
+  } else {
+    const r = await run(bin, ['mcp', 'list', '--json'])
+    try {
+      names = (JSON.parse(r.out) as { name: string }[]).map((s) => s.name)
+    } catch {
+      return
+    }
   }
   for (const name of [SERVER_NAME, LEGACY_SERVER_NAME]) {
-    if (!servers[name]) continue
-    const r = await run(claude, ['mcp', 'remove', name, '--scope', 'user'])
-    logRunner(`removed legacy MCP registration (${name}): ${r.code === 0 ? 'ok' : r.out}`)
+    if (!names.includes(name)) continue
+    const r = await run(bin, agent === 'claude-code' ? ['mcp', 'remove', name, '--scope', 'user'] : ['mcp', 'remove', name])
+    logRunner(`removed legacy MCP registration (${agent}: ${name}): ${r.code === 0 ? 'ok' : r.out}`)
   }
 }
+
+// 연결할 수 있는 에이전트와 그 명령
+type AgentKindName = 'claude-code' | 'codex'
+const AGENTS: Record<AgentKindName, { name: string; bin: string }> = {
+  'claude-code': { name: 'Claude Code', bin: 'claude' },
+  codex: { name: 'Codex', bin: 'codex' },
+}
+const agentOf = (kind: string | null | undefined): AgentKindName => (kind === 'codex' ? 'codex' : 'claude-code')
 
 async function startRunner() {
   runnerWanted = true
@@ -242,13 +260,21 @@ async function startRunner() {
   // 개발 중엔 저장소의 TS 를 시스템 node 24 로 돌린다.
   const bundled = runnerScript().endsWith('.mjs')
   const node = bundled ? process.execPath : await which('node')
-  const claude = await which('claude')
+  const agent = agentOf(readConnectorFile()?.agentKind)
+  const bin = await which(AGENTS[agent].bin)
   if (!node) return setRunnerState({ state: 'error', message: t().nodeMissing })
-  if (!claude) return setRunnerState({ state: 'error', message: t().claudeMissing })
-  await removeLegacyRegistration(claude)
+  if (!bin) return setRunnerState({ state: 'error', message: t().agentMissing(AGENTS[agent].name, AGENTS[agent].bin) })
+  await removeLegacyRegistration(agent, bin)
   if (runner || !runnerWanted) return // 기다리는 동안 다른 호출이 먼저 띄웠거나 멈췄다
-  const PATH = [...(bundled ? [] : [dirname(node)]), dirname(claude), await loginPath()].join(delimiter)
-  const env: NodeJS.ProcessEnv = { ...process.env, PATH, AH_PROFILE: PROFILE, AH_CLAUDE_BIN: claude, AH_EXIT_WITH_PARENT: '1' }
+  const PATH = [...(bundled ? [] : [dirname(node)]), dirname(bin), await loginPath()].join(delimiter)
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    PATH,
+    AH_PROFILE: PROFILE,
+    AH_AGENT_BIN: bin,
+    AH_APP_VERSION: app.getVersion(),
+    AH_EXIT_WITH_PARENT: '1',
+  }
   if (bundled) env.ELECTRON_RUN_AS_NODE = '1'
   else delete env.ELECTRON_RUN_AS_NODE
   delete env.ELECTRON_RENDERER_URL
@@ -337,10 +363,11 @@ ipcMain.on('app:badge', (_e, n: number) => {
 })
 
 ipcMain.handle('connector:status', async () => {
-  const claude = await which('claude')
+  const [claude, codex] = await Promise.all([which('claude'), which('codex')])
   const file = readConnectorFile()
   return {
     claudeInstalled: !!claude,
+    codexInstalled: !!codex,
     configured: !!file?.token,
     workdir: file?.workdir || homedir(),
     runner: runnerState.state,
@@ -365,10 +392,13 @@ ipcMain.handle('connector:setModel', async (_e, model: string) => {
 })
 
 ipcMain.handle('connector:connect', async (_e, p: { token: string; agentKind: string; relayUrl: string }) => {
-  const claude = await which('claude')
-  if (!claude) return { ok: false, error: t().claudeMissingInstall }
+  const agent = AGENTS[agentOf(p.agentKind)]
+  if (!(await which(agent.bin))) return { ok: false, error: t().agentMissingInstall(agent.name, agent.bin) }
   const prev = readConnectorFile()
-  writeConnectorFile({ relayUrl: p.relayUrl, token: p.token, agentKind: p.agentKind, workdir: prev?.workdir, model: prev?.model, locale })
+  // 에이전트를 바꾸면 고른 모델과 모델 목록은 새 에이전트 것으로 다시 받는다
+  const same = agentOf(prev?.agentKind) === agentOf(p.agentKind)
+  if (!same) (agentModels = []), (activeModel = '')
+  writeConnectorFile({ relayUrl: p.relayUrl, token: p.token, agentKind: p.agentKind, workdir: prev?.workdir, model: same ? prev?.model : undefined, locale })
   await restartRunner()
   return { ok: true }
 })

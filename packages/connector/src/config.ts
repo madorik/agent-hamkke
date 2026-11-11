@@ -46,7 +46,10 @@ export function loadConfig(): ConnectorConfig | null {
 
 // 러너가 이어 쓸 Claude 세션. 작업 폴더가 바뀌면 세션을 이어 쓸 수 없어 함께 적어 둔다.
 export interface RunnerState {
+  /** 이어 쓸 세션(Claude Code) 또는 스레드(Codex) id */
   sessionId?: string
+  /** 그 세션을 만든 에이전트. 에이전트를 바꾸면 이어 쓰지 않는다 */
+  agent?: string
   workdir?: string
   /** 계정(user id)별로 마지막에 받은 메시지 시각. 다시 접속하면 그 뒤에 온 @요청을 받아 처리한다 */
   seen?: Record<string, number>

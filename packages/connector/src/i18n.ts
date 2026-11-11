@@ -24,7 +24,7 @@ const ko = {
   stage: { request: '요청', draft: '초안', review: '검토', final: '확정' } as Record<Stage, string>,
 
   // ── 연결 ──
-  noConfig: '연결 설정이 없어요. 데스크톱 앱 > 에이전트에서 Claude Code 연결을 눌러 주세요.',
+  noConfig: '연결 설정이 없어요. 데스크톱 앱 > 에이전트에서 에이전트를 연결해 주세요.',
   relayError: (status: number) => `중계 서버 오류 (${status})`,
 
   // ── 들어오는 이벤트 ──
@@ -138,6 +138,15 @@ const ko = {
 - kind="request"(마스터를 @로 지목한 부탁)는 마스터 지시 없이 처리한다. 마스터의 도구에서 자료를 찾아 send_message 등으로 채널에 답 초안을 올리고, 마스터에게 되묻는 건 자료를 정말 못 찾았을 때만 한다.
 - 할 일이 없으면 도구를 부르지 말고 "없음"이라고만 답하고 끝낸다.
 - 도구 실행 권한은 마스터가 데스크톱에서 허락한다. 거절되면 같은 걸 다시 시도하지 말고, 왜 필요했는지 답에 적는다.`,
+  runnerPromptCodex: (server: string) => `너는 데스크톱 앱 "Agent Hamkke"가 직접 돌리는 세션이다. 사람은 이 대화창을 보지 않는다.
+- 사용자 턴의 <channel source="agent-hamkke" ...> 블록 하나하나가 메신저에서 온 이벤트다. 블록 밖의 문장은 앱이 덧붙인 안내다.
+- 메신저 도구(send_message, propose_document, report_to_master, share_file, download_file, read_channel, read_document, list_channels)는 MCP 서버 "${server}"에 있다. 다른 이름의 agent-hamkke 도구는 쓰지 않는다.
+- 마스터가 너에게만 보낸 지시(kind="master")는 결과를 마지막 답 문장으로 써라. 앱이 그 문장을 마스터에게만 보이는 메시지로 올린다(마크다운 가능). 이때 report_to_master 를 따로 부르지 않는다.
+- 그 밖의 경우 네 일반 답 문장은 아무에게도 전달되지 않는다. 채널에 할 말은 send_message·propose_document, 상대 이벤트를 처리하다 마스터에게 묻거나 알릴 말은 report_to_master 로 한다.
+- 마스터가 내 PC 의 파일을 올리라고 하면 share_file 로 올린다(마스터에게만 보일 땐 to_master=true). 채널에 올라온 파일은 download_file 로 받은 뒤 그 파일을 읽는다.
+- kind="request"(마스터를 @로 지목한 부탁)는 마스터 지시 없이 처리한다. 마스터의 도구에서 자료를 찾아 send_message 등으로 채널에 답 초안을 올리고, 마스터에게 되묻는 건 자료를 정말 못 찾았을 때만 한다.
+- 할 일이 없으면 도구를 부르지 말고 "없음"이라고만 답하고 끝낸다.
+- 명령 실행·파일 변경·도구 실행 허락은 마스터가 데스크톱에서 한다. 거절되면 같은 걸 다시 시도하지 말고, 왜 필요했는지 답에 적는다.`,
   thinking: '생각하는 중',
   readingInstruction: '지시 읽는 중',
   readingRequest: '요청 처리하는 중',
@@ -186,10 +195,10 @@ const ko = {
   waitingPermission: (label: string) => `${label.replace(/ 중$/, '')} 허락을 기다려요`,
   unknownError: '알 수 없는 오류',
   turnFailed: (text: string) => `작업하다 문제가 생겼어요.\n\n${text}`,
-  claudeStartFailed: (msg: string) => `Claude Code 를 실행하지 못했어요: ${msg}`,
-  claudeStartFailedBin: (bin: string, msg: string) => `Claude Code(${bin})를 실행하지 못했어요: ${msg}`,
-  claudeKeepsExiting: (code: number | null) => `Claude 가 계속 종료돼요 (code=${code})`,
-  claudeStopped: (tail: string) => `작업하다 Claude 가 멈췄어요.\n\n${tail}`,
+  agentStartFailed: (agent: string, msg: string) => `${agent}를 실행하지 못했어요: ${msg}`,
+  agentStartFailedBin: (agent: string, bin: string, msg: string) => `${agent}(${bin})를 실행하지 못했어요: ${msg}`,
+  agentKeepsExiting: (agent: string, code: number | null) => `${agent}가 계속 종료돼요 (code=${code})`,
+  agentStopped: (agent: string, tail: string) => `작업하다 ${agent}가 멈췄어요.\n\n${tail}`,
   sessionRestarted: '(세션이 다시 시작됐어요. 직전 이벤트 처리가 끝나지 않았다면 read_channel 로 확인하고 이어서 처리해라.)',
   modelChangeFailed: (err: string) => `모델을 바꾸지 못했어요: ${err}`,
   unsupportedRequest: (subtype: string) => `지원하지 않는 요청: ${subtype}`,
@@ -197,6 +206,9 @@ const ko = {
   permissionPostFailed: (err: string) => `승인함에 요청을 올리지 못했어요: ${err}`,
   permissionDenied: '마스터가 거절했어요.',
   appQuit: '앱이 종료돼 거절됐어요.',
+  codexCommand: '명령 실행',
+  codexFileChange: '파일 변경',
+  codexPermissions: '추가 권한',
 }
 
 export type Messages = typeof ko
@@ -204,7 +216,7 @@ export type Messages = typeof ko
 const en: Messages = {
   stage: { request: 'Request', draft: 'Draft', review: 'Review', final: 'Final' },
 
-  noConfig: 'No connection settings. In the desktop app, open Agents and click Connect for Claude Code.',
+  noConfig: 'No connection settings. In the desktop app, open Agents and connect an agent.',
   relayError: (status) => `Relay server error (${status})`,
 
   system: 'System',
@@ -310,6 +322,15 @@ Rules:
 - Handle kind="request" events (someone @mentioned your master) without waiting for your master: look things up in your master's tools and post a draft answer to the channel with send_message etc. Ask your master only if you really can't find what you need.
 - If there's nothing to do, don't call any tools; just answer "None" and stop.
 - Your master grants tool permissions from the desktop app. If a request is denied, don't retry the same thing; explain in your answer why you needed it.`,
+  runnerPromptCodex: (server) => `You are a session run directly by the desktop app "Agent Hamkke". No person reads this conversation.
+- Each <channel source="agent-hamkke" ...> block in a user turn is an event from the messenger. Text outside the blocks is guidance added by the app.
+- The messenger tools (send_message, propose_document, report_to_master, share_file, download_file, read_channel, read_document, list_channels) are on the MCP server "${server}". Don't use agent-hamkke tools under any other name.
+- When your master sends instructions only to you (kind="master"), write the result as your final answer text. The app posts that text to the chat as a message only your master can see (Markdown OK). Don't also call report_to_master in that case.
+- Otherwise your plain-text answers reach no one. Use send_message / propose_document for what you want to say in a channel, and report_to_master to ask or tell your master something while handling other people's events.
+- If your master asks you to upload a file from this computer, use share_file (to_master=true if only your master should see it). To view a file posted in a channel, fetch it with download_file, then read the saved file.
+- Handle kind="request" events (someone @mentioned your master) without waiting for your master: look things up in your master's tools and post a draft answer to the channel with send_message etc. Ask your master only if you really can't find what you need.
+- If there's nothing to do, don't call any tools; just answer "None" and stop.
+- Your master approves commands, file changes, and tool runs from the desktop app. If a request is denied, don't retry the same thing; explain in your answer why you needed it.`,
   thinking: 'Thinking',
   readingInstruction: 'Reading instructions',
   readingRequest: 'Handling a request',
@@ -358,10 +379,10 @@ Rules:
   waitingPermission: (label) => `Waiting for permission · ${label}`,
   unknownError: 'Unknown error',
   turnFailed: (text) => `Something went wrong while working.\n\n${text}`,
-  claudeStartFailed: (msg) => `Couldn’t start Claude Code: ${msg}`,
-  claudeStartFailedBin: (bin, msg) => `Couldn’t start Claude Code (${bin}): ${msg}`,
-  claudeKeepsExiting: (code) => `Claude keeps exiting (code=${code})`,
-  claudeStopped: (tail) => `Claude stopped while working.\n\n${tail}`,
+  agentStartFailed: (agent, msg) => `Couldn’t start ${agent}: ${msg}`,
+  agentStartFailedBin: (agent, bin, msg) => `Couldn’t start ${agent} (${bin}): ${msg}`,
+  agentKeepsExiting: (agent, code) => `${agent} keeps exiting (code=${code})`,
+  agentStopped: (agent, tail) => `${agent} stopped while working.\n\n${tail}`,
   sessionRestarted: "(The session restarted. If the previous events weren't fully handled, check with read_channel and carry on.)",
   modelChangeFailed: (err) => `Couldn’t switch models: ${err}`,
   unsupportedRequest: (subtype) => `Unsupported request: ${subtype}`,
@@ -369,6 +390,9 @@ Rules:
   permissionPostFailed: (err) => `Couldn’t send the request to the approvals inbox: ${err}`,
   permissionDenied: 'Your master denied this.',
   appQuit: 'Denied because the app quit.',
+  codexCommand: 'Run a command',
+  codexFileChange: 'Change files',
+  codexPermissions: 'Extra permissions',
 }
 
 /** 지금 언어의 문장 */

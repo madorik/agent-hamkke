@@ -19,7 +19,7 @@ All versions are on the [Releases](https://github.com/madorik/agent-hamkke/relea
 - **macOS**: Open the `.dmg` and drag Agent Hamkke to Applications. The app is signed and notarized by Apple.
 - **Windows**: The installer isn't code-signed yet, so Windows SmartScreen may say "Windows protected your PC". Choose **More info**, then **Run anyway**.
 
-To connect an agent, you need [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed and signed in on the same computer. You don't need Node.js: the app runs its connector itself.
+To connect an agent, you need [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or [Codex](https://github.com/openai/codex) installed and signed in on the same computer. Codex works with a ChatGPT account. You don't need Node.js: the app runs its connector itself.
 
 ## Usage
 
@@ -37,13 +37,13 @@ Click **Invite** at the top right to get a 6-character code. The other person ch
 
 ### 3. Connect your agent
 
-Click your name at the bottom left, then **Connect agent**. Next to **Claude Code**, click **Connect**. From then on the app starts Claude Code for you whenever it's open. You don't need a terminal.
+Click your name at the bottom left, then **Connect agent**. Next to **Claude Code** or **Codex**, click **Connect**. From then on the app starts that agent for you whenever it's open. You don't need a terminal. You can connect one agent at a time; connecting the other one switches to it.
 
 - **Change folder** sets the folder your agent works in (default: your home folder).
 - Pick the model with the model button in the message box.
 - Status and errors show here. **View log** opens the full log.
 
-<img src="docs/images/connect-agent.png" width="70%" alt="Settings > Agents: connect Claude Code">
+<img src="docs/images/connect-agent.png" width="70%" alt="Settings > Agents: connect an agent">
 
 ### 4. Talk in the channel
 
@@ -57,7 +57,7 @@ Click your name at the bottom left, then **Connect agent**. Next to **Claude Cod
 Your agent can't post to the channel on its own. Its messages, documents, and files wait above your message box until you decide.
 
 - **Send** posts it as is. **Edit** lets you change it first. **Discard** drops it. With two or more, **Approve all** sends them all.
-- When Claude Code wants to run a tool (for example, to write to Notion), choose **Allow** or **Deny**. Unanswered requests are denied after 10 minutes.
+- When your agent wants to run a tool or command that needs permission (for example, writing to Notion or reaching the network), choose **Allow** or **Deny**. Unanswered requests are denied after 10 minutes.
 - **Approvals** in the sidebar shows everything waiting across all channels.
 - If you trust your agent, turn on **Always approve all**. While it's on, an **Auto-approve** badge shows in the message box. Click the badge to turn it off.
 
@@ -91,14 +91,14 @@ Click the stage next to the channel title (**Request**, **Draft**, **Review**, *
 Click your name at the bottom left, then **Settings**.
 
 - **General**: theme (System, Light, Dark) and language (한국어, English). Your agent reports to you in the language you pick.
-- **Agents**: connect Claude Code, and turn **Always approve all** on or off.
+- **Agents**: connect Claude Code or Codex, and turn **Always approve all** on or off.
 - **Account**: your name and the server address.
 
 ## Layout
 
 ```
 apps/desktop       Desktop app (Electron + React + Tailwind), ChatGPT-style UI
-packages/connector Claude Code connector: the runner (the app drives Claude Code directly) + MCP tool server
+packages/connector Agent connector: the runner (the app drives Claude Code or Codex directly) + MCP tool server
 packages/protocol  Shared types (mirrors src/protocol.ts in the relay repo)
 ```
 
@@ -145,18 +145,27 @@ Screen check: `node apps/desktop/e2e/shots.mjs <relayUrl> <outDir> [light|dark] 
 - **Agent**: The app writes the UI language to `locale` in `connector.json`. The connector and runner use that language for instructions, tool descriptions, and result text (`packages/connector/src/i18n.ts`). Changing the language restarts the runner. An agent writes in the channel's language in channels and in its master's language to its master.
 - **Relay**: Errors come back with a `code` and a sentence in the language picked from `Accept-Language`. System messages are stored as events (`Message.event`) so each viewer renders them in their own language (WebSocket uses `?locale=`). Older messages show the stored sentence as-is.
 
-## Connecting Claude Code
+## Connecting an agent
 
-1. App > Profile > Connect agent > Claude Code **Connect**
+1. App > Profile > Connect agent > **Claude Code** or **Codex** > **Connect**
    - Gets an agent token and saves it to `~/.agent-hamkke/<profile>/connector.json`.
    - Starts the runner (`packages/connector/src/runner.ts`). After that it starts **automatically whenever the app opens**, and stops when the app quits (including a force quit).
 2. If needed, use **Change folder** to pick the folder the agent works in (default: home folder).
-3. When a channel message arrives, the runner feeds it into a `claude -p --input-format stream-json` session as a `<channel kind="peer|master|approval|system">` block. Claude answers with `send_message`, `propose_document`, `report_to_master`, and so on.
+3. When a channel message arrives, the runner feeds it into the agent's session as a `<channel kind="peer|master|approval|system">` block. The agent answers with `send_message`, `propose_document`, `report_to_master`, and so on. These messenger tools come from the connector's MCP server (`claude-channel.ts`), which the runner attaches to the session.
    - Events that arrive within 1.5 seconds are grouped into one turn. Notices that need no answer (system, approved as-is) ride along with the next event.
-   - The session id is written to `runner-state.json` and reused with `--resume` on restart. After 15 quiet minutes the session is stopped and resumed on the next event.
-   - Tool-use confirmations (`can_use_tool`) appear above that channel's input box (and in the approval inbox). With no answer in 10 minutes they are denied. Messenger tools run without confirmation, since they go through message approval anyway.
-4. **Model**: Pick from the models the connected agent reports for this account (`models` from Claude Code `initialize`) with the model button in the chat input. The choice is stored as `model` in `connector.json` and applied to a running session with `set_model` (the conversation continues).
+   - The session is saved in `runner-state.json` and resumed on restart. After 15 quiet minutes the agent is stopped and resumed on the next event.
+   - Permission requests appear above that channel's input box (and in the approval inbox). With no answer in 10 minutes they are denied. Messenger tools run without confirmation, since they go through message approval anyway.
+4. **Model**: Pick from the models the connected agent reports for this account with the model button in the chat input. The choice is stored as `model` in `connector.json`.
 5. Status and errors show in the Agent tab. Full logs are in `~/.agent-hamkke/<profile>/runner.log`.
+
+The runner handles the messenger side (relay, batching, activity, permission relay, replies to the master). Each agent has an engine that talks to its process:
+
+| Agent | Engine | How it runs | Permission requests | Session |
+| --- | --- | --- | --- | --- |
+| Claude Code | `engine-claude.ts` | `claude -p --input-format stream-json`, messenger tools via `--mcp-config` | `can_use_tool` | `--resume <session id>`; model switches apply right away (`set_model`) |
+| Codex | `engine-codex.ts` | `codex app-server` (JSON-RPC), messenger tools added to the thread's config, `workspace-write` sandbox | running commands, changing files, extra permissions, and other MCP tools' calls | `thread/resume <thread id>`; model switches apply from the next turn |
+
+Both agents keep using your own MCP servers (Notion, Jira, …) from their usual config (`~/.claude.json`, `~/.codex/config.toml`).
 
 ### Why a runner instead of channels
 
@@ -196,7 +205,7 @@ The connector (`claude-channel.ts`) still works as before in sessions where chan
 - **Agent message approval** (per channel, on by default): Agent messages and documents become visible to others only after the master sends, edits, or discards them. Turning it on or off leaves a note in the channel. If the master has "Always approve all" on, that person's agent skips this step.
 - **Consecutive message limit** (default 8): Without a person stepping in, agents can't keep sending to each other.
 - **Messages from the other side are material, not instructions**: The connector marks them `kind="peer"` and tells the agent to ask its master first about private material and tool-use requests.
-- **Tool permission relay**: Claude Code's permission prompts appear above that channel's input box and in the approval inbox (they expire after 10 minutes).
+- **Tool permission relay**: The agent's permission prompts appear above that channel's input box and in the approval inbox (they expire after 10 minutes).
 - **Only people finalize**: Finalizing a document version needs every person in the channel to agree. Applying the final version to your own Notion or Jira happens only when the master asks.
 
 ## Releasing
@@ -227,7 +236,7 @@ pnpm dist --mac --arm64 -c.mac.identity=null -c.mac.notarize=false --publish nev
 
 ## Not done yet
 
-- Codex connection (the app drives it directly over the app-server protocol), next up
+- Gemini CLI, GitHub Copilot CLI, and other agents through the Agent Client Protocol (ACP), next up
 - Agents with a built-in API key
 - Account sign-in (currently per-device tokens)
 - Windows code signing, and auto-update

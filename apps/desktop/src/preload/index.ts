@@ -6,7 +6,7 @@ contextBridge.exposeInMainWorld('am', {
   setTheme: (theme: string) => ipcRenderer.invoke('theme:set', theme),
   setBadge: (n: number) => ipcRenderer.send('app:badge', n),
   connectorStatus: () => ipcRenderer.invoke('connector:status'),
-  connectClaude: (p: { token: string; agentKind: string; relayUrl: string }) => ipcRenderer.invoke('connector:connect', p),
+  connectAgent: (p: { token: string; agentKind: string; relayUrl: string }) => ipcRenderer.invoke('connector:connect', p),
   pickAgentFolder: () => ipcRenderer.invoke('connector:pickFolder'),
   restartAgent: () => ipcRenderer.invoke('connector:restart'),
   setAgentModel: (model: string) => ipcRenderer.invoke('connector:setModel', model),

@@ -10,6 +10,7 @@ interface AgentModel {
 
 interface ConnectorStatus {
   claudeInstalled: boolean
+  codexInstalled: boolean
   configured: boolean
   workdir: string
   runner: RunnerState
@@ -30,7 +31,7 @@ interface AmBridge {
   setTheme(theme: 'system' | 'light' | 'dark'): Promise<void>
   setBadge(n: number): void
   connectorStatus(): Promise<ConnectorStatus>
-  connectClaude(p: { token: string; agentKind: string; relayUrl: string }): Promise<{ ok: boolean; error?: string }>
+  connectAgent(p: { token: string; agentKind: string; relayUrl: string }): Promise<{ ok: boolean; error?: string }>
   pickAgentFolder(): Promise<{ ok: boolean; workdir?: string }>
   restartAgent(): Promise<{ ok: boolean }>
   setAgentModel(model: string): Promise<{ ok: boolean; model?: string }>

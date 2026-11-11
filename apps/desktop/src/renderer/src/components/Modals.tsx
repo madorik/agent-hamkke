@@ -154,100 +154,103 @@ function shortPath(p: string) {
   return p.replace(/^\/Users\/[^/]+/, '~').replace(/^C:\\Users\\[^\\]+/i, '~')
 }
 
+// 연결할 수 있는 에이전트. 한 사람에 하나만 연결된다(다른 걸 연결하면 바뀐다).
+const AGENT_ROWS: { kind: 'claude-code' | 'codex'; name: string; icon: React.ReactNode; installed: (s: ConnectorStatus) => boolean }[] = [
+  { kind: 'claude-code', name: 'Claude Code', icon: <Terminal size={18} />, installed: (s) => s.claudeInstalled },
+  { kind: 'codex', name: 'Codex', icon: <Bot size={18} />, installed: (s) => s.codexInstalled },
+]
+
 function AgentsTab() {
   const me = useStore((s) => s.me)
   const relayUrl = useStore((s) => s.relayUrl)
   const status = useStore((s) => s.agentStatus)
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
+  const [error, setError] = useState<{ kind: string; message: string } | null>(null)
   const desktop = !!window.am
 
   useEffect(() => {
     void refreshAgentStatus()
   }, [])
 
-  const act = async (fn: () => Promise<unknown>) => {
+  const act = async (kind: string, fn: () => Promise<unknown>) => {
     setBusy(true)
-    setError('')
+    setError(null)
     try {
       await fn()
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('agents.connectFailed'))
+      setError({ kind, message: e instanceof Error ? e.message : t('agents.connectFailed') })
     }
     await refreshAgentStatus()
     setBusy(false)
   }
 
-  const connect = () =>
-    act(async () => {
-      const { token } = await api.agentToken('claude-code')
-      const r = await window.am!.connectClaude({ token, agentKind: 'claude-code', relayUrl })
+  const connect = (kind: string) =>
+    act(kind, async () => {
+      const { token } = await api.agentToken(kind)
+      const r = await window.am!.connectAgent({ token, agentKind: kind, relayUrl })
       if (!r.ok) throw new Error(r.error ?? t('agents.connectFailed'))
     })
 
-  const connected = !!status?.configured && me?.agentKind === 'claude-code'
-  const online = connected && !!me?.agentOnline && status?.runner !== 'error'
-  const state = !desktop
-    ? t('agents.desktopOnly')
-    : !status
-      ? t('agents.checking')
-      : !status.claudeInstalled
-        ? t('agents.claudeMissing')
-        : connected
-          ? runnerLabel(status.runner)
-          : t('agents.notConnected')
-
   return (
     <div className="flex flex-col gap-3 pt-1">
-      <div className="rounded-2xl border border-line p-4">
-        <div className="flex items-center gap-3">
-          <AgentIcon />
-          <div className="min-w-0 flex-1">
-            <div className="text-[14.5px] font-medium">Claude Code</div>
-            <div className="flex items-center gap-1.5 text-[12.5px] text-fg-3">
-              {connected && <span className={cx('size-1.5 rounded-full', online ? 'bg-ok' : status?.runner === 'error' ? 'bg-danger' : 'bg-fg-3')} />}
-              {state}
+      {AGENT_ROWS.map((a) => {
+        const connected = !!status?.configured && status.agentKind === a.kind && me?.agentKind === a.kind
+        const online = connected && !!me?.agentOnline && status?.runner !== 'error'
+        const installed = status ? a.installed(status) : false
+        const state = !desktop
+          ? t('agents.desktopOnly')
+          : !status
+            ? t('agents.checking')
+            : !installed
+              ? t('agents.missing', { name: a.name })
+              : connected
+                ? runnerLabel(status.runner)
+                : t('agents.notConnected')
+        const message = error?.kind === a.kind ? error.message : connected && status?.runner === 'error' ? status.message : ''
+        return (
+          <div key={a.kind} className="rounded-2xl border border-line p-4">
+            <div className="flex items-center gap-3">
+              <AgentIcon>{a.icon}</AgentIcon>
+              <div className="min-w-0 flex-1">
+                <div className="text-[14.5px] font-medium">{a.name}</div>
+                <div className="flex items-center gap-1.5 text-[12.5px] text-fg-3">
+                  {connected && <span className={cx('size-1.5 rounded-full', online ? 'bg-ok' : status?.runner === 'error' ? 'bg-danger' : 'bg-fg-3')} />}
+                  {state}
+                </div>
+              </div>
+              <Button variant={connected ? 'secondary' : 'primary'} disabled={!desktop || busy || !installed} onClick={() => connect(a.kind)}>
+                {connected ? t('agents.reconnect') : t('agents.connect')}
+              </Button>
             </div>
+            {message && <p className="selectable mt-3 text-[13px] break-words whitespace-pre-wrap text-danger">{message}</p>}
+            {connected && status && (
+              <div className="mt-4 flex flex-col gap-3">
+                <p className="text-[13px] leading-relaxed text-fg-2">{t('agents.about', { name: a.name })}</p>
+                <div className="flex items-center gap-2 rounded-xl bg-code py-1.5 pr-1.5 pl-3">
+                  <FolderOpen size={15} className="shrink-0 text-fg-3" />
+                  <span className="selectable min-w-0 flex-1 truncate font-mono text-[12.5px] text-fg-2" title={status.workdir}>
+                    {shortPath(status.workdir)}
+                  </span>
+                  <Button variant="ghost" className="h-8 px-3 text-[13px]" disabled={busy} onClick={() => act(a.kind, () => window.am!.pickAgentFolder())}>
+                    {t('agents.changeFolder')}
+                  </Button>
+                </div>
+                <p className="text-[13px] text-fg-3">{t('agents.modelHint')}</p>
+                <div className="flex gap-2">
+                  <Button variant="secondary" disabled={busy} onClick={() => act(a.kind, () => window.am!.restartAgent())}>
+                    <RotateCw size={15} />
+                    {t('agents.restart')}
+                  </Button>
+                  <Button variant="ghost" onClick={() => void window.am!.openAgentLog()}>
+                    <ScrollText size={15} />
+                    {t('agents.log')}
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
-          <Button
-            variant={connected ? 'secondary' : 'primary'}
-            disabled={!desktop || busy || (status ? !status.claudeInstalled : true)}
-            onClick={connect}
-          >
-            {connected ? t('agents.reconnect') : t('agents.connect')}
-          </Button>
-        </div>
-        {(error || (connected && status?.runner === 'error' && status.message)) && (
-          <p className="selectable mt-3 text-[13px] break-words whitespace-pre-wrap text-danger">{error || status?.message}</p>
-        )}
-        {connected && status && (
-          <div className="mt-4 flex flex-col gap-3">
-            <p className="text-[13px] leading-relaxed text-fg-2">
-              {t('agents.about')}
-            </p>
-            <div className="flex items-center gap-2 rounded-xl bg-code py-1.5 pr-1.5 pl-3">
-              <FolderOpen size={15} className="shrink-0 text-fg-3" />
-              <span className="selectable min-w-0 flex-1 truncate font-mono text-[12.5px] text-fg-2" title={status.workdir}>
-                {shortPath(status.workdir)}
-              </span>
-              <Button variant="ghost" className="h-8 px-3 text-[13px]" disabled={busy} onClick={() => act(() => window.am!.pickAgentFolder())}>
-                {t('agents.changeFolder')}
-              </Button>
-            </div>
-            <p className="text-[13px] text-fg-3">{t('agents.modelHint')}</p>
-            <div className="flex gap-2">
-              <Button variant="secondary" disabled={busy} onClick={() => act(() => window.am!.restartAgent())}>
-                <RotateCw size={15} />
-                {t('agents.restart')}
-              </Button>
-              <Button variant="ghost" onClick={() => void window.am!.openAgentLog()}>
-                <ScrollText size={15} />
-                {t('agents.log')}
-              </Button>
-            </div>
-          </div>
-        )}
-      </div>
+        )
+      })}
       {/* 항상 모두 승인: 에이전트가 보내는 것과 도구 실행을 묻지 않고 처리 */}
       <div className="flex items-center gap-3 rounded-2xl border border-line p-4">
         <div className="min-w-0 flex-1">
@@ -256,18 +259,13 @@ function AgentsTab() {
         </div>
         <Toggle label={t('auto.title')} on={!!me?.autoApprove} onChange={(v) => void setAutoApprove(v)} />
       </div>
-      <Soon name="Codex" icon={<Bot size={18} />} />
       <Soon name={t('agents.apiKey')} icon={<KeyRound size={18} />} />
     </div>
   )
 }
 
-function AgentIcon() {
-  return (
-    <span className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-line bg-sidebar text-fg-2">
-      <Terminal size={18} />
-    </span>
-  )
+function AgentIcon({ children }: { children: React.ReactNode }) {
+  return <span className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-line bg-sidebar text-fg-2">{children}</span>
 }
 
 function Soon({ name, icon }: { name: string; icon: React.ReactNode }) {
