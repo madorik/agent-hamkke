@@ -1,0 +1,16 @@
+{
+  "name": "@ah/connector",
+  "private": true,
+  "type": "module",
+  "bin": { "ah-claude-channel": "src/claude-channel.ts" },
+  "scripts": { "typecheck": "tsc -p ." },
+  "dependencies": {
+    "@ah/protocol": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.17.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.2"
+  }
+}

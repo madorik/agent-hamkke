@@ -1,0 +1,271 @@
+@import 'tailwindcss';
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --bg: #ffffff;
+  --sidebar: #f9f9f9;
+  --hover: #ececec;
+  --active: #e3e3e3;
+  --text: #0d0d0d;
+  --text-2: #5d5d5d;
+  --text-3: #8f8f8f;
+  --border: #e5e5e5;
+  --border-2: #d4d4d4;
+  --bubble: #f4f4f4;
+  --composer: #ffffff;
+  --menu: #ffffff;
+  --accent: #0d0d0d;
+  --accent-fg: #ffffff;
+  --blue: #0a7cff;
+  --blue-bg: #e9f3ff;
+  --amber: #b25e09;
+  --amber-bg: #fff6e5;
+  --danger: #d92d20;
+  --green: #12a150;
+  --code: #f7f7f8;
+  --scrim: rgba(0, 0, 0, 0.32);
+  --diff-add: #dcf5e4;
+  --diff-del: #fde4e2;
+  color-scheme: light;
+}
+
+.dark {
+  --bg: #212121;
+  --sidebar: #181818;
+  --hover: #2a2a2a;
+  --active: #323232;
+  --text: #ececec;
+  --text-2: #b4b4b4;
+  --text-3: #8b8b8b;
+  --border: #363636;
+  --border-2: #474747;
+  --bubble: #303030;
+  --composer: #303030;
+  --menu: #2f2f2f;
+  --accent: #ececec;
+  --accent-fg: #0d0d0d;
+  --blue: #4ea8ff;
+  --blue-bg: #1b2a3a;
+  --amber: #f0b45b;
+  --amber-bg: #3a2c16;
+  --danger: #ff6b5e;
+  --green: #3ccf7a;
+  --code: #2a2a2a;
+  --scrim: rgba(0, 0, 0, 0.55);
+  --diff-add: #1e3a2a;
+  --diff-del: #42221f;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-sidebar: var(--sidebar);
+  --color-hover: var(--hover);
+  --color-active: var(--active);
+  --color-fg: var(--text);
+  --color-fg-2: var(--text-2);
+  --color-fg-3: var(--text-3);
+  --color-line: var(--border);
+  --color-line-2: var(--border-2);
+  --color-bubble: var(--bubble);
+  --color-composer: var(--composer);
+  --color-menu: var(--menu);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-blue: var(--blue);
+  --color-blue-bg: var(--blue-bg);
+  --color-amber: var(--amber);
+  --color-amber-bg: var(--amber-bg);
+  --color-danger: var(--danger);
+  --color-ok: var(--green);
+  --color-code: var(--code);
+  --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', Pretendard, 'Segoe UI', 'Malgun Gothic', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.selectable,
+.selectable * {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.drag {
+  -webkit-app-region: drag;
+}
+.drag button,
+.drag input,
+.drag a,
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+button {
+  cursor: default;
+}
+
+textarea,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 8px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+:hover::-webkit-scrollbar-thumb {
+  background-color: var(--border-2);
+}
+
+/* 마크다운 */
+.md > :first-child {
+  margin-top: 0;
+}
+.md > :last-child {
+  margin-bottom: 0;
+}
+.md p,
+.md ul,
+.md ol,
+.md pre,
+.md table,
+.md blockquote {
+  margin: 0.6em 0;
+}
+.md h1,
+.md h2,
+.md h3 {
+  font-weight: 600;
+  line-height: 1.35;
+  margin: 1.2em 0 0.5em;
+}
+.md h1 {
+  font-size: 1.5em;
+}
+.md h2 {
+  font-size: 1.25em;
+}
+.md h3 {
+  font-size: 1.08em;
+}
+.md ul {
+  list-style: disc;
+  padding-left: 1.4em;
+}
+.md ol {
+  list-style: decimal;
+  padding-left: 1.4em;
+}
+.md li {
+  margin: 0.2em 0;
+}
+.md a {
+  color: var(--blue);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.md code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  background: var(--code);
+  border-radius: 6px;
+  padding: 0.12em 0.36em;
+}
+.md pre {
+  background: var(--code);
+  border-radius: 12px;
+  padding: 12px 14px;
+  overflow-x: auto;
+}
+.md pre code {
+  background: none;
+  padding: 0;
+}
+.md blockquote {
+  border-left: 3px solid var(--border-2);
+  padding-left: 0.9em;
+  color: var(--text-2);
+}
+.md table {
+  border-collapse: collapse;
+  font-size: 0.94em;
+}
+.md th,
+.md td {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  text-align: left;
+}
+.md th {
+  background: var(--sidebar);
+  font-weight: 600;
+}
+.md hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 1.2em 0;
+}
+
+.diff-add {
+  background: var(--diff-add);
+  border-radius: 3px;
+}
+.diff-del {
+  background: var(--diff-del);
+  text-decoration: line-through;
+  border-radius: 3px;
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.pop-in {
+  animation: pop-in 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  transform-origin: top left;
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+.fade-in {
+  animation: fade-in 160ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pop-in,
+  .fade-in {
+    animation: none;
+  }
+}
