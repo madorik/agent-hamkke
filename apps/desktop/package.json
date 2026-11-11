@@ -1,7 +1,7 @@
 {
   "name": "@ah/desktop",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.1.2",
   "productName": "Agent Hamkke",
   "description": "People and their own agents working together in one channel",
   "author": "madorik",

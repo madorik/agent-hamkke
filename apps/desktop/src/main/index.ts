@@ -399,6 +399,11 @@ ipcMain.handle('connector:openLog', async () => {
 
 app.whenReady().then(() => {
   locale = readConnectorFile()?.locale ?? toLocale(app.getLocale()) ?? 'en'
+  // 개발 모드에서도 Dock 에 앱 아이콘이 보이게(배포판은 번들의 아이콘을 쓴다)
+  if (isMac && !app.isPackaged) {
+    const icon = join(__dirname, '../../build/icon.png')
+    if (existsSync(icon)) app.dock?.setIcon(icon)
+  }
   createWindow()
   loadModelCache()
   void startRunner() // 연결해 둔 적이 있으면 앱을 켤 때 에이전트도 같이 켠다

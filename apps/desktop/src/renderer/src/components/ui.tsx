@@ -102,6 +102,21 @@ export function Button({
   )
 }
 
+/** 앱 로고: 선 삼태극(apps/desktop/build/icon.svg 와 같은 그림, 바깥 여백만 뺐다). 주황과 흰색만 쓴다. */
+export function AppMark({ size = 48 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="100 100 824 824" aria-hidden="true" className="block">
+      <rect x="100" y="100" width="824" height="824" rx="185" fill="#F26419" />
+      <g fill="none" stroke="#FFFFFF" strokeWidth="30" strokeLinecap="round">
+        <circle cx="512" cy="512" r="250" />
+        <path d="M 512 512 A 125 125 0 0 0 512 262" />
+        <path d="M 512 512 A 125 125 0 0 0 728.5 637" />
+        <path d="M 512 512 A 125 125 0 0 0 295.5 637" />
+      </g>
+    </svg>
+  )
+}
+
 export function Toggle({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
     <button

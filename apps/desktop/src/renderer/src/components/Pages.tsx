@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import { Globe, Inbox, MessagesSquare, Unplug } from 'lucide-react'
+import { Globe, Inbox, Unplug } from 'lucide-react'
 import { LANGUAGES, getLocale, setLocale, t } from '../lib/i18n'
 import { answerPermission, openChannel, setModal, signup, startChannel, useStore } from '../lib/store'
 import { Composer } from './Composer'
 import { DraftCard } from './Message'
 import { TopBar } from './TopBar'
-import { AgentAvatar, Button, cx, timeLabel } from './ui'
+import { AgentAvatar, AppMark, Button, cx, timeLabel } from './ui'
 
 export function Home() {
   const me = useStore((s) => s.me)
@@ -165,8 +165,8 @@ export function Onboarding() {
           setBusy(false)
         }}
       >
-        <div className="mx-auto mb-7 flex size-12 items-center justify-center rounded-2xl bg-accent text-accent-fg">
-          <MessagesSquare size={24} />
+        <div className="mx-auto mb-7 size-12">
+          <AppMark size={48} />
         </div>
         <h1 className="text-[26px] font-semibold tracking-[-0.01em]">{t('onboarding.title')}</h1>
         <input

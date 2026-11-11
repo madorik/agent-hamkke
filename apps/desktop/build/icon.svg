@@ -1,8 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <!-- 앱 아이콘 원본. 앱 안 로고(검은 둥근 사각형 + lucide messages-square)와 같다. icon.png 는 이걸 1024px 로 그린 것 -->
-  <rect x="100" y="100" width="824" height="824" rx="185" fill="#0d0d0d"/>
-  <g transform="translate(300 300) scale(17.667)" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M16 10a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 14.286V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
-    <path d="M20 9a2 2 0 0 1 2 2v10.286a.71.71 0 0 1-1.212.502l-2.202-2.202A2 2 0 0 0 17.172 19H10a2 2 0 0 1-2-2v-1"/>
+  <!-- 앱 아이콘 원본: 선 삼태극. 주황 둥근 사각형 위에 흰 원을 세 곡선이 소용돌이처럼 나눈다(나·상대·에이전트의 조화).
+       색은 주황과 흰색 두 가지만. 앱 안 로고(AppMark)와 같다. icon.png 는 이걸 1024px 로 그린 것 -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#F26419"/>
+  <g fill="none" stroke="#FFFFFF" stroke-width="30" stroke-linecap="round">
+    <circle cx="512" cy="512" r="250"/>
+    <path d="M 512 512 A 125 125 0 0 0 512 262"/>
+    <path d="M 512 512 A 125 125 0 0 0 728.5 637"/>
+    <path d="M 512 512 A 125 125 0 0 0 295.5 637"/>
   </g>
 </svg>
