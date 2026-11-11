@@ -3,35 +3,41 @@
   "private": true,
   "version": "0.1.0",
   "productName": "Agent Hamkke",
+  "description": "People and their own agents working together in one channel",
+  "author": "madorik",
+  "license": "MIT",
+  "homepage": "https://github.com/madorik/agent-hamkke",
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "start": "electron-vite preview",
     "start:b": "AH_PROFILE=b electron .",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "bundle:connector": "node scripts/bundle-connector.mjs",
+    "dist": "pnpm bundle:connector && electron-vite build && electron-builder"
   },
   "devDependencies": {
+    "@ah/protocol": "workspace:*",
     "@tailwindcss/vite": "^4.3.4",
     "@types/node": "^24.19.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.2.1",
-    "electron": "^45.2.3",
-    "electron-vite": "^6.0.0",
-    "playwright": "1.56.1",
-    "tailwindcss": "^4.3.4",
-    "typescript": "^5.9.3",
-    "vite": "^8.3.6"
-  },
-  "dependencies": {
-    "@ah/protocol": "workspace:*",
     "diff": "^9.0.0",
+    "electron": "^45.2.3",
+    "electron-builder": "^26.18.0",
+    "electron-vite": "^6.0.0",
+    "esbuild": "^0.28.2",
     "lucide-react": "^1.69.0",
+    "playwright": "1.56.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
+    "tailwindcss": "^4.3.4",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.6",
     "zustand": "^5.0.16"
   }
 }

@@ -33,7 +33,16 @@ if (!config) {
 const SERVER_NAME = profile() === 'default' ? 'agent-hamkke' : `agent-hamkke-${profile()}`
 const CLAUDE = process.env.AH_CLAUDE_BIN || 'claude'
 const WORKDIR = config.workdir || homedir()
-const CONNECTOR = fileURLToPath(new URL('./claude-channel.ts', import.meta.url))
+// 배포판은 묶은 runner.mjs 옆의 claude-channel.mjs, 저장소에서 돌 때는 TS 파일
+const CONNECTOR = fileURLToPath(new URL(import.meta.url.endsWith('.mjs') ? './claude-channel.mjs' : './claude-channel.ts', import.meta.url))
+// 배포판에선 앱(Electron)이 Node 대신 러너를 돌린다(ELECTRON_RUN_AS_NODE). MCP 서버도 같은 실행 파일로 띄운다.
+const AS_NODE = process.versions.electron ? { ELECTRON_RUN_AS_NODE: '1' } : {}
+/** Claude 와 그 도구에는 ELECTRON_RUN_AS_NODE 를 넘기지 않는다(다른 Electron 앱이 안 뜬다) */
+function claudeEnv(extra: Record<string, string>): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env, ...extra }
+  delete env.ELECTRON_RUN_AS_NODE
+  return env
+}
 const DOWNLOAD_DIR = join(profileDir(), 'files') // download_file 이 받는 곳. Read 할 때 묻지 않게 세션에 더한다.
 const PERMISSION_TTL = 10 * 60_000 // 중계 서버와 같게
 const BATCH_MS = 1500 // 한꺼번에 들어온 이벤트는 한 턴으로
@@ -71,7 +80,7 @@ function discoverModels() {
   const p = spawn(CLAUDE, ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--strict-mcp-config', '--tools', ''], {
     cwd: WORKDIR,
     stdio: ['pipe', 'pipe', 'ignore'],
-    env: { ...process.env, AH_RUNNER_SESSION: profile() },
+    env: claudeEnv({ AH_RUNNER_SESSION: profile() }),
   })
   const done = setTimeout(() => p.kill(), 30_000)
   p.on('error', (e) => log('could not get the model list:', e.message))
@@ -253,7 +262,7 @@ function startClaude() {
         type: 'stdio',
         command: process.execPath,
         args: ['--disable-warning=ExperimentalWarning', CONNECTOR],
-        env: { AH_PROFILE: profile(), AH_RUNNER: '1' },
+        env: { AH_PROFILE: profile(), AH_RUNNER: '1', ...AS_NODE },
       },
     },
   }
@@ -280,7 +289,7 @@ function startClaude() {
   const p = spawn(CLAUDE, args, {
     cwd: WORKDIR,
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, AH_PROFILE: profile(), AH_RUNNER_SESSION: profile() },
+    env: claudeEnv({ AH_PROFILE: profile(), AH_RUNNER_SESSION: profile() }),
   })
   child = p
   const startedAt = Date.now()

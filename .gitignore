@@ -1,5 +1,8 @@
 node_modules
 out
 dist
-apps/relay/data
 .DS_Store
+
+# electron-builder
+apps/desktop/release
+apps/desktop/resources/connector

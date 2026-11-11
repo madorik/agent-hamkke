@@ -6,9 +6,22 @@ A desktop app where people and their own agents (Claude Code, Codex, …) work t
 
 <sub>Higher quality: [docs/demo.mp4](docs/demo.mp4). In the demo, Jamie's side and both agents' messages are sent through the relay API so the run is repeatable (`apps/desktop/e2e/demo.mjs`).</sub>
 
-## Usage
+## Download
 
-Release builds for macOS and Windows aren't published yet. Until then, run the app from source (see [Run](#run)). You need [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed and signed in on your computer to connect an agent.
+| Platform | File |
+| --- | --- |
+| macOS, Apple silicon | [Agent-Hamkke-mac-arm64.dmg](https://github.com/madorik/agent-hamkke/releases/latest/download/Agent-Hamkke-mac-arm64.dmg) |
+| macOS, Intel | [Agent-Hamkke-mac-x64.dmg](https://github.com/madorik/agent-hamkke/releases/latest/download/Agent-Hamkke-mac-x64.dmg) |
+| Windows (x64) | [Agent-Hamkke-win-x64.exe](https://github.com/madorik/agent-hamkke/releases/latest/download/Agent-Hamkke-win-x64.exe) |
+
+All versions are on the [Releases](https://github.com/madorik/agent-hamkke/releases) page.
+
+- **macOS**: Open the `.dmg` and drag Agent Hamkke to Applications. The app is signed and notarized by Apple.
+- **Windows**: The installer isn't code-signed yet, so Windows SmartScreen may say "Windows protected your PC". Choose **More info**, then **Run anyway**.
+
+To connect an agent, you need [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed and signed in on the same computer. You don't need Node.js: the app runs its connector itself.
+
+## Usage
 
 ### 1. Get started
 
@@ -184,14 +197,39 @@ The connector (`claude-channel.ts`) still works as before in sessions where chan
 - **Tool permission relay**: Claude Code's permission prompts appear above that channel's input box and in the approval inbox (they expire after 10 minutes).
 - **Only people finalize**: Finalizing a document version needs every person in the channel to agree. Applying the final version to your own Notion or Jira happens only when the master asks.
 
+## Releasing
+
+Releases are built by GitHub Actions (`.github/workflows/release.yml`) when you push a version tag.
+
+1. Bump `version` in `apps/desktop/package.json` and commit.
+2. Tag and push: `git tag v0.1.0 && git push origin v0.1.0`. The tag must match the version.
+3. The workflow creates a draft release, builds macOS (arm64 and x64, signed and notarized) and Windows (x64, unsigned), uploads them, then publishes the release.
+
+macOS signing needs these repository secrets (Settings > Secrets and variables > Actions):
+
+| Secret | What it is |
+| --- | --- |
+| `MAC_CERT_P12_BASE64` | Your **Developer ID Application** certificate and private key, exported from Keychain as `.p12`, then base64-encoded (`base64 -i cert.p12`) |
+| `MAC_CERT_PASSWORD` | The password you set when exporting the `.p12` |
+| `APPLE_API_KEY_P8` | Contents of an App Store Connect API key file (`AuthKey_XXXXXXXXXX.p8`), used to notarize |
+| `APPLE_API_KEY_ID` | That key's Key ID |
+| `APPLE_API_ISSUER` | The Issuer ID shown above the keys list in App Store Connect |
+
+The packaged app bundles the connector (`pnpm --filter @ah/desktop bundle:connector` writes `resources/connector/*.mjs`) and runs it with the app's own executable as Node (`ELECTRON_RUN_AS_NODE`). To build an unsigned app locally:
+
+```bash
+cd apps/desktop
+pnpm dist --mac --arm64 -c.mac.identity=null -c.mac.notarize=false --publish never
+# release/mac-arm64/Agent Hamkke.app
+```
+
 ## Not done yet
 
 - Codex connection (the app drives it directly over the app-server protocol), next up
 - Agents with a built-in API key
 - Account sign-in (currently per-device tokens)
-- Release packaging: connector bundle (.mjs), macOS notarization and Windows signing, auto-update
+- Windows code signing, and auto-update
 - Messages that arrive while the app is closed aren't delivered to the agent separately (it reads context with read_channel on the next event)
-- Shipping `runner.mjs` in the release bundle (right now node 24 runs the repo's TS directly)
 
 ## License
 

@@ -1,0 +1,45 @@
+# 배포판 빌드(pnpm dist). 태그를 올리면 .github/workflows/release.yml 이 macOS·Windows 를 빌드해 GitHub Release 에 올린다.
+appId: com.watalabs.agenthamkke
+productName: Agent Hamkke
+copyright: Copyright (c) 2026 madorik
+directories:
+  output: release
+  buildResources: build
+# renderer·main·preload 는 electron-vite 가 모두 번들했다(out/). node_modules 는 넣지 않는다.
+files:
+  - out/**
+  - package.json
+# 커넥터(러너 + MCP 서버)는 pnpm bundle:connector 로 묶은 .mjs. 앱이 자신을 Node 로 써서 돌린다.
+extraResources:
+  - from: resources/connector
+    to: connector
+artifactName: Agent-Hamkke-${os}-${arch}.${ext}
+publish:
+  provider: github
+  owner: madorik
+  repo: agent-hamkke
+  releaseType: draft
+
+mac:
+  category: public.app-category.productivity
+  target:
+    - dmg
+    - zip
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # 서명: CSC_LINK(Developer ID Application .p12) + CSC_KEY_PASSWORD
+  # 공증: APPLE_API_KEY(.p8 경로) + APPLE_API_KEY_ID + APPLE_API_ISSUER
+  notarize: true
+dmg:
+  title: Agent Hamkke
+
+# Windows 는 아직 서명하지 않는다(SmartScreen 에서 '추가 정보 > 실행')
+win:
+  target:
+    - target: nsis
+      arch: x64
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true

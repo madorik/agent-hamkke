@@ -237,15 +237,19 @@ async function startRunner() {
   clearTimeout(runnerRetry)
   if (runner) return
   if (!existsSync(connectorConfigPath())) return setRunnerState({ state: 'off' })
-  const node = await which('node')
+  // 배포판은 묶은 runner.mjs 를 앱 자신(Electron)을 Node 로 써서 돌린다. 사용자가 Node 를 깔 필요가 없다.
+  // 개발 중엔 저장소의 TS 를 시스템 node 24 로 돌린다.
+  const bundled = runnerScript().endsWith('.mjs')
+  const node = bundled ? process.execPath : await which('node')
   const claude = await which('claude')
   if (!node) return setRunnerState({ state: 'error', message: t().nodeMissing })
   if (!claude) return setRunnerState({ state: 'error', message: t().claudeMissing })
   await removeLegacyRegistration(claude)
   if (runner || !runnerWanted) return // 기다리는 동안 다른 호출이 먼저 띄웠거나 멈췄다
-  const PATH = [dirname(node), dirname(claude), await loginPath()].join(delimiter)
+  const PATH = [...(bundled ? [] : [dirname(node)]), dirname(claude), await loginPath()].join(delimiter)
   const env: NodeJS.ProcessEnv = { ...process.env, PATH, AH_PROFILE: PROFILE, AH_CLAUDE_BIN: claude, AH_EXIT_WITH_PARENT: '1' }
-  delete env.ELECTRON_RUN_AS_NODE
+  if (bundled) env.ELECTRON_RUN_AS_NODE = '1'
+  else delete env.ELECTRON_RUN_AS_NODE
   delete env.ELECTRON_RENDERER_URL
 
   const p = spawn(node, ['--disable-warning=ExperimentalWarning', runnerScript()], { env, stdio: ['pipe', 'pipe', 'pipe'] })
