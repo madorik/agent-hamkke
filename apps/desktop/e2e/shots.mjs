@@ -93,6 +93,9 @@ const app = await electron.launch({
   env: { ...process.env, AH_PROFILE: profile, AH_RELAY_URL: RELAY },
 })
 const page = await app.firstWindow()
+// 창이 뜬 직후 한 번 더 로드된다. 그 사이에 붙으면 페이지가 꼬이므로 잠깐 기다린다.
+await wait(3000)
+await page.waitForSelector('input[placeholder]')
 await page.setViewportSize({ width: 1280, height: 800 }).catch(() => {})
 await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1280, 800))
 await page.evaluate(([t, l]) => (localStorage.setItem('ah:theme', t), localStorage.setItem('ah:locale', l)), [THEME, LOCALE])
