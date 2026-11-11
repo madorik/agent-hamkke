@@ -214,7 +214,7 @@ Releases are built by GitHub Actions (`.github/workflows/release.yml`) when you 
 
 1. Bump `version` in `apps/desktop/package.json` and commit.
 2. Tag and push: `git tag v0.1.0 && git push origin v0.1.0`. The tag must match the version.
-3. The workflow creates a draft release, builds macOS (arm64 and x64, signed and notarized) and Windows (x64, unsigned), uploads them, then publishes the release.
+3. The workflow creates a draft release, builds macOS (arm64 and x64 in parallel, signed and notarized) and Windows (x64, unsigned), uploads them, then publishes the release. Most of the macOS time is waiting for Apple's notary service, which usually takes a few minutes but can take much longer when it's busy.
 
 macOS signing needs these repository secrets (Settings > Secrets and variables > Actions):
 

@@ -29,9 +29,13 @@ jobs:
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 ||
             gh release create "$GITHUB_REF_NAME" --draft --title "Agent Hamkke $GITHUB_REF_NAME" --generate-notes
 
+  # arm64 와 x64 를 따로 동시에 빌드한다(Apple 공증을 기다리는 시간이 겹치게)
   mac:
     needs: draft
     runs-on: macos-latest
+    strategy:
+      matrix:
+        arch: [arm64, x64]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -40,10 +44,9 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Build, sign, notarize, and upload
+      - name: Build, sign, and notarize
         working-directory: apps/desktop
         env:
-          GH_TOKEN: ${{ github.token }}
           CSC_LINK: ${{ secrets.MAC_CERT_P12_BASE64 }}
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
           APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
@@ -58,7 +61,14 @@ jobs:
           done
           export APPLE_API_KEY="$RUNNER_TEMP/AuthKey.p8"
           printf '%s\n' "$APPLE_API_KEY_P8" > "$APPLE_API_KEY"
-          pnpm run dist --mac --arm64 --x64 --publish always
+          pnpm run dist --mac --${{ matrix.arch }} --publish never
+      - name: Upload to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "$GITHUB_REF_NAME" --clobber \
+            apps/desktop/release/Agent-Hamkke-mac-${{ matrix.arch }}.dmg \
+            apps/desktop/release/Agent-Hamkke-mac-${{ matrix.arch }}.zip
 
   windows:
     needs: draft
@@ -71,11 +81,14 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Build and upload (unsigned)
+      - name: Build (unsigned)
         working-directory: apps/desktop
+        run: pnpm run dist --win --x64 --publish never
+      - name: Upload to the release
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: pnpm run dist --win --x64 --publish always
+        run: gh release upload "$GITHUB_REF_NAME" --clobber apps/desktop/release/Agent-Hamkke-win-x64.exe
 
   publish:
     needs: [mac, windows]
