@@ -1,4 +1,4 @@
-import type { Approvals, Artifact, Channel, Message, PermissionRequest, Stage, User } from '@ah/protocol'
+import type { Approvals, Artifact, Channel, Message, PermissionRequest, Stage, UploadTicket, User } from '@ah/protocol'
 import { getLocale, t } from './i18n'
 
 export class ApiError extends Error {
@@ -31,7 +31,7 @@ export function createApi(base: () => string, token: () => string | null) {
     return j
   }
 
-  // 파일은 JSON 이 아니라 바이트를 그대로 주고받는다
+  // 파일 받기는 JSON 이 아니라 바이트를 그대로 받는다
   async function raw(method: string, path: string, init: { body?: BodyInit; type?: string } = {}): Promise<Response> {
     let r: Response
     try {
@@ -82,10 +82,18 @@ export function createApi(base: () => string, token: () => string | null) {
       req<{ artifact: Artifact; message: Message }>('POST', `/channels/${channelId}/artifacts`, p),
     finalize: (artifactId: string, version: number) => req<Artifact>('POST', `/artifacts/${artifactId}/finalize`, { version }),
 
+    // 올리기 허가를 받아 바이트를 그 주소(Vercel Blob)에 바로 PUT 한 뒤 채널에 낸다
     uploadFile: async (channelId: string, file: File, visibility: 'channel' | 'private', note = '') => {
-      const q = new URLSearchParams({ name: file.name, visibility, note })
-      const r = await raw('POST', `/channels/${channelId}/files?${q}`, { body: file, type: file.type || 'application/octet-stream' })
-      return (await r.json()) as Message
+      const mime = file.type || 'application/octet-stream'
+      const ticket = await req<UploadTicket>('POST', `/channels/${channelId}/uploads`, { name: file.name, mime, size: file.size, visibility })
+      let put: Response
+      try {
+        put = await fetch(ticket.url, { method: 'PUT', headers: { 'Content-Type': mime }, body: file })
+      } catch {
+        throw new ApiError(0, t('api.offline'))
+      }
+      if (!put.ok) throw new ApiError(put.status, t('api.error', { status: put.status }))
+      return req<Message>('POST', `/channels/${channelId}/files`, { uploadId: ticket.uploadId, visibility, note })
     },
     fileBlob: async (fileId: string) => (await raw('GET', `/files/${encodeURIComponent(fileId)}`)).blob(),
 

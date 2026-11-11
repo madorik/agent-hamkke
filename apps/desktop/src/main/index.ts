@@ -20,7 +20,8 @@ moveLegacy(join(homedir(), '.agent-messenger'), join(homedir(), '.agent-hamkke')
 const PROFILE = process.env.AH_PROFILE || 'default'
 if (PROFILE !== 'default') app.setPath('userData', join(app.getPath('appData'), 'Agent Hamkke', PROFILE))
 
-const RELAY_URL = process.env.AH_RELAY_URL || 'http://localhost:8787'
+// 배포한 앱은 운영 중계 서버(Vercel), 개발 중(pnpm dev)엔 로컬 중계 서버(agent-hamkke-relay 의 npm run dev)
+const RELAY_URL = process.env.AH_RELAY_URL || (app.isPackaged ? 'https://hamkke.watalabs.com' : 'http://localhost:8787')
 const isMac = process.platform === 'darwin'
 const SERVER_NAME = PROFILE === 'default' ? 'agent-hamkke' : `agent-hamkke-${PROFILE}`
 const LEGACY_SERVER_NAME = PROFILE === 'default' ? 'agent-messenger' : `agent-messenger-${PROFILE}`

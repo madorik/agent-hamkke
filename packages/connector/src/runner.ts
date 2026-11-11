@@ -206,7 +206,18 @@ function finishTurn(o: Record<string, any>) {
 // ── Claude 세션 ─────────────────────────────────────────────────
 
 let state: RunnerState = loadState()
-if (state.workdir !== WORKDIR) state = { workdir: WORKDIR } // 폴더가 바뀌면 이전 세션을 이어 쓸 수 없다
+if (state.workdir !== WORKDIR) state = { workdir: WORKDIR, seen: state.seen } // 폴더가 바뀌면 이전 세션을 이어 쓸 수 없다
+
+// 마지막에 받은 메시지 시각(계정별). 자주 오니 모아서 적는다.
+let seenTimer: NodeJS.Timeout | undefined
+function markSeen(userId: string, at: number) {
+  if ((state.seen?.[userId] ?? 0) >= at) return
+  state.seen = { ...state.seen, [userId]: at }
+  clearTimeout(seenTimer)
+  seenTimer = setTimeout(() => saveState(state), 2000)
+}
+// 처음 접속하는 계정은 최근 1시간 안의 @요청까지 받는다
+const FIRST_LOOKBACK = 60 * 60_000
 
 let child: ChildProcessWithoutNullStreams | null = null
 let initSeen = false
@@ -509,6 +520,17 @@ connectRelay(
     if (ev.type === 'permission_verdict') return decide(ev.requestId, ev.behavior)
     const d = await inbox.handle(ev)
     if (d) enqueue(d)
+    const me = inbox.me
+    if (!me) return
+    if (ev.type === 'message') markSeen(me.id, ev.message.createdAt)
+    // 이어 받은 연결(resumed)은 놓친 이벤트가 없다
+    if (ev.type === 'hello' && !ev.resumed) {
+      // 꺼져 있는 동안 나(마스터)를 지목한 요청
+      const missed = await inbox.missed(state.seen?.[me.id] ?? Date.now() - FIRST_LOOKBACK)
+      if (missed.length) log(`${missed.length} missed request(s) while offline`)
+      for (const m of missed) enqueue(m)
+      markSeen(me.id, Date.now())
+    }
   },
   () => shutdown(0),
 )

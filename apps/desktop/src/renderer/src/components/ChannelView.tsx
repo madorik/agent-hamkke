@@ -122,7 +122,6 @@ export function ChannelView({ id }: { id: string }) {
             {messages?.map((m, i) => (
               <MessageRow key={m.id} m={m} prev={messages[i - 1]} />
             ))}
-            <AgentActivityRow channelId={id} />
           </div>
         </div>
         <div className="mx-auto w-full max-w-[46rem] px-6 pb-5">
@@ -187,48 +186,6 @@ function DropOverlay({ toAgent }: { toAgent: boolean }) {
             t('channel.dropPublic')
           )}
         </div>
-      </div>
-    </div>
-  )
-}
-
-// 내 에이전트가 이 채널 일로 지금 무엇을 하는지. 허락을 기다리면 그 자리에서 허용·거부한다.
-function AgentActivityRow({ channelId }: { channelId: string }) {
-  const a = useStore((s) => s.activity[channelId])
-  const me = useStore((s) => s.me)
-  const perm = useStore((s) => (a?.permissionId ? s.permissions.find((p) => p.id === a.permissionId) : undefined))
-  if (!a || !me) return null
-  const waiting = a.state === 'waiting' && !!perm
-  return (
-    <div className="mt-6" role="status" aria-live="polite">
-      <div className="mb-1.5 flex items-center gap-2">
-        <AgentAvatar color={me.color} size={26} online />
-        <span className="text-[14px] font-semibold">{t('common.myAgent')}</span>
-        <span
-          className={cx(
-            'rounded-md px-1.5 text-[11.5px] leading-[18px] font-medium',
-            waiting ? 'bg-amber-bg text-amber' : 'bg-blue-bg text-blue',
-          )}
-        >
-          {waiting ? t('channel.needsPermission') : t('channel.working')}
-        </span>
-      </div>
-      <div className="pl-[34px]">
-        {waiting ? (
-          // 허용·거부는 입력창 위 승인 영역에서
-          <p className="text-[14px] text-fg-2">
-            {a.detail} · <span className="text-fg-3">{t('channel.waitingHint')}</span>
-          </p>
-        ) : (
-          <div className="flex items-center gap-2.5 text-[14px] text-fg-2">
-            <span className="inline-flex gap-1" aria-hidden>
-              {[0, 180, 360].map((d) => (
-                <span key={d} className="size-1.5 rounded-full bg-fg-3 motion-safe:animate-pulse" style={{ animationDelay: `${d}ms` }} />
-              ))}
-            </span>
-            <span>{a.detail || t('channel.thinking')}</span>
-          </div>
-        )}
       </div>
     </div>
   )

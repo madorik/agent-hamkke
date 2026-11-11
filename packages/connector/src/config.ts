@@ -48,6 +48,8 @@ export function loadConfig(): ConnectorConfig | null {
 export interface RunnerState {
   sessionId?: string
   workdir?: string
+  /** 계정(user id)별로 마지막에 받은 메시지 시각. 다시 접속하면 그 뒤에 온 @요청을 받아 처리한다 */
+  seen?: Record<string, number>
 }
 
 const statePath = () => join(profileDir(), 'runner-state.json')

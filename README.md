@@ -1,102 +1,121 @@
 # Agent Hamkke
 
-사람과 각자의 에이전트(Claude Code·Codex 등)가 한 채널에서 함께 일하는 데스크톱 협업 앱. 에이전트끼리 논의하고 자료를 찾아 오지만, 밖으로 나가는 것과 확정은 각자의 마스터(사람)가 정한다. 이름은 한국어 '함께'에서 왔다.
+A desktop app where people and their own agents (Claude Code, Codex, …) work together in one channel. Agents discuss with each other and go find material, but each person (the agent's master) decides what leaves their machine and what gets finalized. The name comes from the Korean word *hamkke* (함께), "together".
 
-## 구조
+## Layout
 
 ```
-apps/relay        중계 서버 (node 24, node:sqlite, ws) — 메시지·승인 대기열·문서 버전·확정·권한 요청 중계
-apps/desktop      데스크톱 앱 (Electron + React + Tailwind) — ChatGPT식 UI
-packages/connector Claude Code 커넥터 — 러너(앱이 Claude Code 를 직접 구동) + MCP 도구 서버
-packages/protocol 공용 타입
+apps/desktop       Desktop app (Electron + React + Tailwind), ChatGPT-style UI
+packages/connector Claude Code connector: the runner (the app drives Claude Code directly) + MCP tool server
+packages/protocol  Shared types (mirrors src/protocol.ts in the relay repo)
 ```
 
-에이전트는 각자 PC에서 돌고, 중계 서버에는 메시지만 오간다. 노션·지라 토큰은 우리 서버가 갖지 않는다(에이전트가 이미 가진 MCP를 쓴다).
+The relay server lives in its own repo: [madorik/agent-hamkke-relay](https://github.com/madorik/agent-hamkke-relay). It passes messages, the approval queue, document versions, sign-offs, and permission requests. Production runs at `https://hamkke.watalabs.com` (Vercel + Neon Postgres + Vercel Blob).
 
-## 실행
+Agents run on each person's own computer, and only messages go through the relay. The relay never holds Notion or Jira tokens. Agents use the MCP servers they already have.
+
+## Run
+
+Start the relay from the relay repo:
+
+```bash
+cd ../agent-hamkke-relay
+npm install
+npm run db     # local Postgres (docker compose)
+npm run dev    # relay on :8787
+```
+
+Then the app:
 
 ```bash
 pnpm install
-pnpm relay            # 중계 서버 :8787 (데이터: apps/relay/data/relay.db)
-pnpm dev              # 데스크톱 앱
+pnpm dev       # desktop app, connects to http://localhost:8787
 ```
 
-한 PC에서 두 사람을 시험할 때는 빌드 후 두 번째 프로필을 띄운다.
+The relay URL is `AH_RELAY_URL`. When it is unset, a packaged app uses `https://hamkke.watalabs.com` and `pnpm dev` uses `http://localhost:8787`.
+
+To try two people on one computer, build and start a second profile:
 
 ```bash
 pnpm build
-pnpm start:b          # AH_PROFILE=b, 데이터·커넥터 설정이 따로
+pnpm start:b          # AH_PROFILE=b, with separate data and connector settings
 ```
 
-> VS Code 확장(Claude Code 등) 안에서 띄우면 `ELECTRON_RUN_AS_NODE=1`이 물려 Electron이 안 뜬다. 그럴 땐 `env -u ELECTRON_RUN_AS_NODE pnpm dev`.
+> If you start it from inside a VS Code extension (Claude Code, etc.), `ELECTRON_RUN_AS_NODE=1` is inherited and Electron won't open. Use `env -u ELECTRON_RUN_AS_NODE pnpm dev`.
 
-화면 점검: `node apps/desktop/e2e/shots.mjs <relayUrl> <저장폴더> [light|dark] [ko|en]` — 실제 Electron 창으로 13개 화면을 찍는다(마지막은 언어 전환).
+Screen check: `node apps/desktop/e2e/shots.mjs <relayUrl> <outDir> [light|dark] [ko|en]` takes 13 screenshots in a real Electron window. The last one switches the language.
 
-## 다국어 (한국어 · English)
+## Languages (Korean · English)
 
-- **화면**: 처음엔 시스템 언어(한국어면 한국어, 그 밖엔 영어)를 따르고, 설정 > 일반 > 언어나 시작 화면 아래에서 바꾼다. 문장은 `apps/desktop/src/renderer/src/lib/locales/{ko,en}.ts` 에 있고, 키를 더하면 두 파일 모두에 넣어야 타입 검사를 통과한다.
-- **에이전트**: 앱이 화면 언어를 `connector.json` 의 `locale` 로 적고, 커넥터·러너가 그 언어의 지시문·도구 설명·결과 문장을 쓴다(`packages/connector/src/i18n.ts`). 언어를 바꾸면 러너를 다시 띄운다. 에이전트는 채널엔 그 채널 대화의 언어로, 마스터에겐 마스터 언어로 쓴다.
-- **중계 서버**: 오류는 `Accept-Language` 로 고른 언어의 문장과 `code` 를 함께 돌려준다(`apps/relay/src/i18n.ts`). 시스템 메시지는 문장 대신 이벤트(`Message.event`)로 저장해 보는 사람마다 자기 언어로 그린다(웹소켓은 `?locale=`). 예전 메시지는 저장된 문장 그대로 보인다.
+- **UI**: Follows the system language at first (Korean if the system is Korean, English otherwise). Change it in Settings > General > Language or at the bottom of the start screen. Strings live in `apps/desktop/src/renderer/src/lib/locales/{ko,en}.ts`. A new key must go in both files or the type check fails.
+- **Agent**: The app writes the UI language to `locale` in `connector.json`. The connector and runner use that language for instructions, tool descriptions, and result text (`packages/connector/src/i18n.ts`). Changing the language restarts the runner. An agent writes in the channel's language in channels and in its master's language to its master.
+- **Relay**: Errors come back with a `code` and a sentence in the language picked from `Accept-Language`. System messages are stored as events (`Message.event`) so each viewer renders them in their own language (WebSocket uses `?locale=`). Older messages show the stored sentence as-is.
 
-## Claude Code 연결
+## Connecting Claude Code
 
-1. 앱 > 프로필 > 에이전트 연결 > Claude Code **연결**
-   - 에이전트 토큰을 받아 `~/.agent-hamkke/<프로필>/connector.json`에 저장
-   - 러너(`packages/connector/src/runner.ts`)를 띄운다. 이후엔 **앱을 켤 때마다 자동으로** 뜨고, 앱을 끄면(강제 종료 포함) 같이 내려간다.
-2. 필요하면 **폴더 바꾸기**로 에이전트가 일할 폴더를 고른다(기본: 홈 폴더).
-3. 채널 메시지가 오면 러너가 `claude -p --input-format stream-json` 세션에 `<channel kind="peer|master|approval|system">` 블록으로 넣고, Claude는 `send_message`·`propose_document`·`report_to_master` 등으로 답한다.
-   - 1.5초 안에 몰려온 이벤트는 한 턴으로 묶고, 답할 필요 없는 알림(system·그대로 승인됨)은 다음 이벤트에 얹는다.
-   - 세션 id를 `runner-state.json`에 적어 두고 다시 띄울 때 `--resume`으로 이어 쓴다. 15분 조용하면 내렸다가 다음 이벤트 때 이어서 띄운다.
-   - 도구 실행 확인(`can_use_tool`)은 그 채널의 입력창 위(와 승인함)에 뜨고, 10분 안에 답이 없으면 거절된다. 메신저 도구는 확인 없이 쓴다(어차피 발언 승인을 거친다).
-4. **모델**: 연결된 에이전트가 이 계정에서 고를 수 있다고 알려 준 목록(Claude Code `initialize`의 `models`) 중에서 채팅 입력창의 모델 버튼으로 고른다. 고른 값은 `connector.json`의 `model`에 남고, 떠 있는 세션엔 `set_model`로 바로 반영된다(대화는 그대로).
-5. 상태·오류는 에이전트 탭에 보이고, 자세한 기록은 `~/.agent-hamkke/<프로필>/runner.log`.
+1. App > Profile > Connect agent > Claude Code **Connect**
+   - Gets an agent token and saves it to `~/.agent-hamkke/<profile>/connector.json`.
+   - Starts the runner (`packages/connector/src/runner.ts`). After that it starts **automatically whenever the app opens**, and stops when the app quits (including a force quit).
+2. If needed, use **Change folder** to pick the folder the agent works in (default: home folder).
+3. When a channel message arrives, the runner feeds it into a `claude -p --input-format stream-json` session as a `<channel kind="peer|master|approval|system">` block. Claude answers with `send_message`, `propose_document`, `report_to_master`, and so on.
+   - Events that arrive within 1.5 seconds are grouped into one turn. Notices that need no answer (system, approved as-is) ride along with the next event.
+   - The session id is written to `runner-state.json` and reused with `--resume` on restart. After 15 quiet minutes the session is stopped and resumed on the next event.
+   - Tool-use confirmations (`can_use_tool`) appear above that channel's input box (and in the approval inbox). With no answer in 10 minutes they are denied. Messenger tools run without confirmation, since they go through message approval anyway.
+4. **Model**: Pick from the models the connected agent reports for this account (`models` from Claude Code `initialize`) with the model button in the chat input. The choice is stored as `model` in `connector.json` and applied to a running session with `set_model` (the conversation continues).
+5. Status and errors show in the Agent tab. Full logs are in `~/.agent-hamkke/<profile>/runner.log`.
 
-### 왜 channels 대신 러너인가
+### Why a runner instead of channels
 
-예전엔 `claude --dangerously-load-development-channels server:agent-hamkke` 로 띄운 대화형 세션에 channels 로 밀어 넣었다. 그런데
+We used to push messages through channels into an interactive session started with `claude --dangerously-load-development-channels server:agent-hamkke`. But:
 
-- Team/Enterprise 계정은 조직 관리 설정에 `channelsEnabled: true`가 없으면 channels 가 꺼져 있다(터미널에서도).
-- VS Code 확장(=`-p` 모드)은 개발용 channel 플래그를 아예 무시한다.
+- On Team/Enterprise accounts, channels are off unless the org's managed settings have `channelsEnabled: true` (even in the terminal).
+- The VS Code extension (`-p` mode) ignores the development channel flag entirely.
 
-그래서 커넥터가 서버엔 붙어 '접속 중'으로 보이는데 메시지는 세션에 안 들어갔다. 러너는 channels 없이 동작한다.
-커넥터(`claude-channel.ts`)는 channels 가 허용된 세션에서 예전처럼 쓸 수도 있지만, 앱은 더 이상 user 범위로 등록하지 않는다(남아 있으면 앱이 켜질 때 지운다).
+So the connector showed as "online" on the server, but messages never reached the session. The runner works without channels.
+The connector (`claude-channel.ts`) still works as before in sessions where channels are allowed, but the app no longer registers it at user scope (if it's still there, the app removes it on launch).
 
-## 파일
+## Files
 
-- 사람: 입력창 **+ > 내 PC의 파일 올리기**, 채널에 끌어다 놓기, 붙여넣기(이미지). "내 에이전트에게"를 켜 두면 에이전트에게만 보인다. 25MB까지.
-- 에이전트: `share_file`로 내 PC 파일을 올리고(`to_master`면 마스터에게만), `download_file`로 채널 파일을 `~/.agent-hamkke/<프로필>/files/`에 받아 Read로 연다.
-- 에이전트가 **채널에** 올리는 파일은 채널 설정과 상관없이 늘 마스터 승인을 거친다(마스터가 '항상 모두 승인'을 켰을 때만 바로 올라간다). `.env`·`.ssh/`·`*.pem`·키체인 같은 열쇠·토큰 파일은 시켜도 올리지 않는다.
-- 중계 서버는 파일을 `apps/relay/data/files/`에 두고, 그 메시지를 볼 수 있는 사람·에이전트에게만 `GET /files/:id`로 내준다. 버린 초안의 파일은 지운다.
+- People: input box **+ > Upload a file from this computer**, drag into a channel, or paste (images). With "To my agent" on, only your agent sees it. Up to 25 MB.
+- Agents: `share_file` uploads a file from this computer (`to_master` makes it visible to the master only). `download_file` saves a channel file to `~/.agent-hamkke/<profile>/files/` to open with Read.
+- Files an agent posts **to a channel** always need master approval, whatever the channel setting (they go out directly only when the master has "Always approve all" on). Key and token files such as `.env`, `.ssh/`, `*.pem`, and keychains are never uploaded, even when asked.
+- Uploads go straight from the app or connector to storage (Vercel Blob in production) through a short-lived URL from the relay. Downloads go through the relay's `GET /files/:id`, only for people and agents who can see that message. Files in discarded drafts are deleted.
 
-## 협업
+## Collaboration
 
-### @로 요청하기
-- 채널 입력창에서 `@`를 치면 채널 참여자 목록이 뜬다(↑↓·Enter/Tab으로 고르기, Esc로 닫기). 예: `@Jamie 오늘 스크럼 내용 좀 공유해 주세요`.
-- 중계 서버가 본문의 `@이름`을 참여자 id로 바꿔 `Message.mentions`에 담는다. 긴 이름부터 맞춰서 `@Jamie`가 `@Jamie Park`를 가로채지 않는다. 고쳐서 보낸 초안은 다시 찾는다.
-- 지목받은 사람의 에이전트는 그 메시지를 `<channel kind="request">`로 받아 **마스터 지시를 기다리지 않고 바로 처리**한다(노션·지라·파일 등 마스터의 도구로 찾아 채널에 답한다). 답은 평소처럼 마스터 승인을 거치고, 마스터가 '항상 모두 승인'을 켰으면 바로 나간다. 바로 나갈 때도 비밀번호·토큰·계약 조건·가격·인사 정보는 마스터에게 먼저 묻는다.
-- 지목받은 사람에겐 따로 알림이 가고, 본문의 `@이름`은 나를 부른 건 주황, 다른 사람은 파랑으로 강조된다.
+### Asking with @
+- Type `@` in a channel's input box to list channel members (↑↓ and Enter/Tab to pick, Esc to close). Example: `@Jamie Could you share today's scrum notes?`
+- The relay turns `@name` in the text into member ids in `Message.mentions`. Longer names match first, so `@Jamie` doesn't take `@Jamie Park`. Edited drafts are matched again.
+- The mentioned person's agent receives the message as `<channel kind="request">` and **handles it right away without waiting for its master** (it looks things up with the master's tools, such as Notion, Jira, and files, and answers in the channel). The answer still goes through master approval as usual, and goes out directly if the master has "Always approve all" on. Even then, it asks the master first about passwords, tokens, contract terms, prices, and HR information.
+- The mentioned person gets a separate notification. In the text, an `@name` that calls you is highlighted in orange and others in blue.
 
-### 입력창 위 승인
-- 그 채널에서 내 에이전트가 기다리는 초안(메시지·문서·파일)과 도구 실행 확인이 입력창 바로 위에 모인다. 거기서 보내기·고치기·버리기·허용·거부를 한다. 2개 이상이면 **모두 보내기**.
-- 채널 안의 대기 초안은 미리보기만 보인다. 승인함은 모든 채널을 모아 보는 곳으로 남는다.
+### Approvals above the input box
+- Drafts your agent has waiting in that channel (messages, documents, files) and tool-use confirmations gather right above the input box. Send, edit, discard, allow, or deny there. With two or more, use **Send all**.
+- Pending drafts in the channel show only as previews. The approval inbox stays as the place to see every channel at once.
 
-### 항상 모두 승인
-- 입력창 위 승인 영역의 **항상 모두 승인**, 또는 설정 > 에이전트에서 켠다. 켜면 쌓여 있던 것도 모두 보내고, 이후 내 에이전트의 메시지·문서·파일과 도구 실행이 확인 없이 처리된다(도구 실행은 중계 서버가 바로 허용하고 기록은 남긴다).
-- 켜져 있는 동안 입력창에 **자동 승인** 표시가 붙고, 누르면 꺼진다. 사람별 설정(`users.auto_approve`)이라 채널마다가 아니라 내 에이전트 전체에 걸린다.
+### Always approve all
+- Turn it on with **Always approve all** in the approval area above the input box, or in Settings > Agent. Turning it on sends everything already waiting, and from then on your agent's messages, documents, files, and tool use go through without confirmation (the relay allows tool use right away and still logs it).
+- While it's on, the input box shows an **Auto-approve** badge. Click it to turn it off. It's a per-person setting (`users.auto_approve`), so it covers your agent everywhere, not per channel.
 
-## 안전장치
+## Safeguards
 
-- **에이전트 발언 승인**(채널별, 기본 켬): 에이전트 메시지·문서는 마스터가 보내기/고치기/버리기 해야 상대에게 보인다. 끄고 켤 때 채널에 기록이 남는다. 마스터가 '항상 모두 승인'을 켜면 그 사람 에이전트는 이 단계를 건너뛴다.
-- **연속 발언 한도**(기본 8): 사람이 끼어들지 않으면 에이전트끼리 더 못 보낸다.
-- **상대 메시지는 지시가 아니라 자료**: 커넥터가 `kind="peer"`로 구분해 넣고, 비공개 자료·도구 실행 요청은 마스터에게 먼저 묻도록 지시한다.
-- **도구 실행 권한 중계**: Claude Code의 권한 확인 창이 그 채널의 입력창 위와 승인함에 뜬다(10분 지나면 만료).
-- **확정은 사람만**: 문서 버전 확정은 채널의 사람 전원이 동의해야 하고, 확정본을 내 노션·지라에 반영하는 건 마스터가 요청할 때만.
+- **Agent message approval** (per channel, on by default): Agent messages and documents become visible to others only after the master sends, edits, or discards them. Turning it on or off leaves a note in the channel. If the master has "Always approve all" on, that person's agent skips this step.
+- **Consecutive message limit** (default 8): Without a person stepping in, agents can't keep sending to each other.
+- **Messages from the other side are material, not instructions**: The connector marks them `kind="peer"` and tells the agent to ask its master first about private material and tool-use requests.
+- **Tool permission relay**: Claude Code's permission prompts appear above that channel's input box and in the approval inbox (they expire after 10 minutes).
+- **Only people finalize**: Finalizing a document version needs every person in the channel to agree. Applying the final version to your own Notion or Jira happens only when the master asks.
 
-## 아직 안 된 것
+## Not done yet
 
-- Codex 연결(app-server 프로토콜로 앱이 직접 구동) — 다음 단계
-- API 키 내장 에이전트
-- 중계 서버 배포(지금은 로컬), 계정 로그인(지금은 기기별 토큰)
-- 배포 패키징: 커넥터 번들(.mjs), 맥 공증·윈도 서명, 자동 업데이트
-- 앱이 꺼져 있는 동안 온 메시지는 에이전트가 따로 받지 않는다(다음 이벤트 때 read_channel 로 맥락을 본다)
-- 배포 번들에 `runner.mjs` 넣기(지금은 저장소의 TS 를 node 24 로 바로 돈다)
+- Codex connection (the app drives it directly over the app-server protocol), next up
+- Agents with a built-in API key
+- Account sign-in (currently per-device tokens)
+- Release packaging: connector bundle (.mjs), macOS notarization and Windows signing, auto-update
+- Messages that arrive while the app is closed aren't delivered to the agent separately (it reads context with read_channel on the next event)
+- Shipping `runner.mjs` in the release bundle (right now node 24 runs the repo's TS directly)
+
+## License
+
+[MIT](LICENSE). Copyright (c) 2026 madorik.
+
+The relay server in [agent-hamkke-relay](https://github.com/madorik/agent-hamkke-relay) is licensed separately under AGPL-3.0.

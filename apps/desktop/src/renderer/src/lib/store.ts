@@ -249,15 +249,35 @@ async function refreshAll() {
 // ── 실시간 ─────────────────────────────────────────────────
 
 let ws: WebSocket | null = null
+let connId: string | null = null
 let retry = 0
 
-function connect() {
+/**
+ * 중계 서버에 붙는다. 서버가 reconnect 를 보내면(Vercel 함수 수명) 옛 연결을 둔 채 ?resume= 로 새 연결을 연다.
+ * 서버가 이벤트를 빠짐·겹침 없이 새 연결로 넘기고 옛 연결을 닫으므로, 그때까지 옛 연결의 이벤트도 그대로 받는다.
+ */
+function connect(resume?: string) {
   const token = get().token
   if (!token) return
-  ws?.close()
-  const sock = new WebSocket(get().relayUrl.replace(/^http/, 'ws') + '/ws?token=' + encodeURIComponent(token) + '&locale=' + getLocale())
+  if (!resume) ws?.close()
+  const sock = new WebSocket(
+    get().relayUrl.replace(/^http/, 'ws') +
+      '/ws?token=' +
+      encodeURIComponent(token) +
+      '&locale=' +
+      getLocale() +
+      (resume ? '&resume=' + encodeURIComponent(resume) : ''),
+  )
   ws = sock
-  sock.onmessage = (e) => onEvent(JSON.parse(String(e.data)) as ServerEvent)
+  sock.onmessage = (e) => {
+    const ev = JSON.parse(String(e.data)) as ServerEvent
+    if (ev.type === 'hello') connId = ev.connId
+    if (ev.type === 'reconnect') {
+      if (ws === sock && connId) connect(connId)
+      return
+    }
+    onEvent(ev)
+  }
   sock.onclose = () => {
     if (ws !== sock) return
     set({ online: false })

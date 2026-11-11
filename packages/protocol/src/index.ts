@@ -1,4 +1,5 @@
 // 중계 서버 · 데스크톱 · 커넥터가 같이 쓰는 타입. 런타임 코드 없음(import type 으로만 쓴다).
+// 중계 서버 레포(github.com/madorik/agent-hamkke-relay)의 src/protocol.ts 와 같은 내용이다. 바꾸면 양쪽을 같이 고친다.
 
 export type Stage = 'request' | 'draft' | 'review' | 'final'
 export type AuthorKind = 'human' | 'agent' | 'system'
@@ -52,6 +53,15 @@ export interface Channel {
   lastMessageKind: 'text' | 'artifact' | 'file' | null
   pendingCount: number
   unread: number
+}
+
+/**
+ * 파일 올리기 허가(POST /channels/:id/uploads). 바이트를 url 에 PUT(Content-Type 은 올릴 때 밝힌 mime)한 뒤
+ * POST /channels/:id/files { uploadId, visibility, note } 로 채널에 낸다.
+ */
+export interface UploadTicket {
+  uploadId: string
+  url: string
 }
 
 /** 채널에 올린 파일. 내용은 GET /files/:id 로 받는다(로그인 필요). */
@@ -145,7 +155,16 @@ export interface Approvals {
 }
 
 export type ServerEvent =
-  | { type: 'hello'; me: User; kind: ViewerKind }
+  /**
+   * 연결되면 처음 보내는 이벤트. connId 는 이 연결의 id.
+   * resumed 면 ?resume= 로 이어 받은 연결이라 그 사이 놓친 이벤트가 없다(다시 불러올 필요 없음).
+   */
+  | { type: 'hello'; me: User; kind: ViewerKind; connId: string; resumed: boolean }
+  /**
+   * 서버가 곧 이 연결을 닫는다(Vercel 함수 수명). 새 연결을 /ws?...&resume=<connId> 로 열면
+   * 이벤트가 끊기거나 겹치지 않게 새 연결로 넘어가고, 옛 연결은 서버가 닫는다.
+   */
+  | { type: 'reconnect' }
   /** 내 계정 정보가 바뀜(이름·항상 모두 승인). 나의 사람·에이전트 연결에만 보낸다 */
   | { type: 'user'; user: User }
   | { type: 'message'; message: Message }

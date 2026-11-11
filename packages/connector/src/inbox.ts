@@ -59,7 +59,7 @@ export function createInbox(api: Api) {
     return m.authorId === me?.id ? M.withName(owner, me?.name ?? '') : owner
   }
 
-  async function onMessage(m: Message): Promise<Delivery | null> {
+  async function onMessage(m: Message, missed = false): Promise<Delivery | null> {
     if (!me) return null
     const c = channels.get(m.channelId) ?? (await refreshChannels(), channels.get(m.channelId))
     const base = { channel_id: m.channelId, channel: c?.title ?? '', message_id: m.id }
@@ -94,6 +94,7 @@ export function createInbox(api: Api) {
       content = M.fileArrived(describeFile(m), m.body)
     }
     if (request) content = M.requestArrived(speaker(m), me.name, content)
+    if (request && missed) content = M.requestMissed(fmtTime(m.createdAt)) + '\n' + content
     return {
       content,
       meta: {
@@ -103,6 +104,7 @@ export function createInbox(api: Api) {
         from_role: m.authorKind,
         // 답이 마스터 승인을 거치는지(auto 면 바로 나간다)
         ...(request ? { approval: me.autoApprove ? 'auto' : 'required' } : {}),
+        ...(missed ? { missed: 'true' } : {}),
       },
     }
   }
@@ -128,10 +130,22 @@ export function createInbox(api: Api) {
     }
   }
 
+  /** 에이전트가 꺼져 있는 동안 since 뒤에 온 @요청(이미 넘긴 건 빼고) */
+  async function missed(since: number): Promise<Delivery[]> {
+    const list = await api<Message[]>('GET', `/mentions?since=${since}`).catch((e) => (log(e), [] as Message[]))
+    const out: Delivery[] = []
+    for (const m of list) {
+      const d = await onMessage(m, true)
+      if (d) out.push(d)
+    }
+    return out
+  }
+
   return {
     get me() {
       return me
     },
+    missed,
     channels,
     pendingIds,
     ensureMe,

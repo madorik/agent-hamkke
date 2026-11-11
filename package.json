@@ -3,11 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "relay": "node --watch --disable-warning=ExperimentalWarning apps/relay/src/server.ts",
     "dev": "pnpm --filter @ah/desktop dev",
     "build": "pnpm --filter @ah/desktop build",
     "start:b": "pnpm --filter @ah/desktop start:b",
     "typecheck": "pnpm -r typecheck"
   },
-  "packageManager": "pnpm@10.15.1"
+  "packageManager": "pnpm@10.15.1",
+  "license": "MIT"
 }
