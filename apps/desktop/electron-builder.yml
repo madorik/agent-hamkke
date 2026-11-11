@@ -33,6 +33,8 @@ mac:
   notarize: true
 dmg:
   title: Agent Hamkke
+  # dmg 자체도 Developer ID 로 서명한다(안의 앱은 서명·공증된다)
+  sign: true
 
 # Windows 는 아직 서명하지 않는다(SmartScreen 에서 '추가 정보 > 실행')
 win:

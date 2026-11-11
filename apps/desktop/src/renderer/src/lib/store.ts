@@ -179,6 +179,18 @@ export const isPinnedModel = (m: AgentModel) => m.value.startsWith('claude-')
 
 let agentWatch = false
 
+// 마지막으로 본 내 정보. 서버에 닿지 않을 때도 프로필 메뉴(에이전트 연결·설정·로그아웃)를 그리려고 둔다.
+function rememberMe(user: User | null) {
+  LS.set('me', user ? JSON.stringify(user) : null)
+}
+function lastMe(): User | null {
+  try {
+    return JSON.parse(LS.get('me') ?? 'null') as User | null
+  } catch {
+    return null
+  }
+}
+
 export async function boot() {
   if (!agentWatch && window.am) {
     agentWatch = true
@@ -195,9 +207,16 @@ export async function boot() {
     logout()
     return set({ booted: true })
   }
-  if (me) set({ me: me.user })
+  if (me) {
+    set({ me: me.user })
+    rememberMe(me.user)
+  } else {
+    // 서버에 닿지 않는다. 마지막 내 정보로 화면을 그리고, 연결은 계속 시도한다(붙으면 hello 때 새로 불러온다).
+    const cached = lastMe()
+    if (cached) set({ me: cached })
+  }
   set({ booted: true })
-  await refreshAll()
+  await refreshAll().catch(() => {})
   connect()
 }
 
@@ -208,6 +227,7 @@ export async function signup(name: string, relayUrl?: string) {
   }
   const r = await api.signup(name)
   LS.set('token', r.token)
+  rememberMe(r.user)
   set({ token: r.token, me: r.user })
   await refreshAll()
   connect()
@@ -215,6 +235,7 @@ export async function signup(name: string, relayUrl?: string) {
 
 export function logout() {
   LS.set('token', null)
+  rememberMe(null)
   ws?.close()
   ws = null
   set({
@@ -317,6 +338,7 @@ function onEvent(ev: ServerEvent) {
       retry = 0
       // 중계 서버가 hello 바로 뒤에 지금 진행 중인 작업 상태를 다시 보내 준다
       set({ me: ev.me, online: true, activity: {} })
+      rememberMe(ev.me)
       if (wasOffline) void refreshAll()
       break
     }
@@ -328,7 +350,10 @@ function onEvent(ev: ServerEvent) {
       break
     }
     case 'user':
-      if (ev.user.id === s.me?.id) set({ me: ev.user })
+      if (ev.user.id === s.me?.id) {
+        set({ me: ev.user })
+        rememberMe(ev.user)
+      }
       break
     case 'channel':
       set({ channels: { ...s.channels, [ev.channel.id]: ev.channel } })

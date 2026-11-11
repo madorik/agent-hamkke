@@ -17,7 +17,8 @@ moveLegacy(join(app.getPath('appData'), 'Agent Messenger'), join(app.getPath('ap
 moveLegacy(join(homedir(), '.agent-messenger'), join(homedir(), '.agent-hamkke'))
 
 // 한 PC 에서 두 사람을 시험할 수 있게 프로필로 데이터 폴더를 나눈다: AH_PROFILE=b
-const PROFILE = process.env.AH_PROFILE || 'default'
+// 개발 중(pnpm dev, 패키징 안 됨)엔 'dev' 프로필을 쓴다. 설치한 앱과 로그인·서버 주소·에이전트 설정이 섞이지 않게.
+const PROFILE = process.env.AH_PROFILE || (app.isPackaged ? 'default' : 'dev')
 if (PROFILE !== 'default') app.setPath('userData', join(app.getPath('appData'), 'Agent Hamkke', PROFILE))
 
 // 배포한 앱은 운영 중계 서버(Vercel), 개발 중(pnpm dev)엔 로컬 중계 서버(agent-hamkke-relay 의 npm run dev)

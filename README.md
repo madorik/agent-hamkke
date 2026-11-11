@@ -126,6 +126,8 @@ pnpm dev       # desktop app, connects to http://localhost:8787
 
 The relay URL is `AH_RELAY_URL`. When it is unset, a packaged app uses `https://hamkke.watalabs.com` and `pnpm dev` uses `http://localhost:8787`.
 
+`pnpm dev` keeps its data in a separate `dev` profile (`~/.agent-hamkke/dev` and `Agent Hamkke/dev` in the app data folder), so an installed release and a development build never share a login, server address, or agent settings.
+
 To try two people on one computer, build and start a second profile:
 
 ```bash
