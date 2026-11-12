@@ -8,7 +8,7 @@ import { Canvas } from './Canvas'
 import { Composer, type Visibility } from './Composer'
 import { MessageRow } from './Message'
 import { TopBar } from './TopBar'
-import { AgentAvatar, Avatar, Button, IconButton, MenuItem, Popover, Toggle, agentLabel, cx } from './ui'
+import { AgentAvatar, Avatar, Button, IconButton, Markdown, MenuItem, Popover, Toggle, agentLabel, cx } from './ui'
 
 const STAGES: Stage[] = ['request', 'draft', 'review', 'final']
 
@@ -122,6 +122,7 @@ export function ChannelView({ id }: { id: string }) {
             {messages?.map((m, i) => (
               <MessageRow key={m.id} m={m} prev={messages[i - 1]} />
             ))}
+            <MyAgentWorking channelId={id} />
           </div>
         </div>
         <div className="mx-auto w-full max-w-[46rem] px-6 pb-5">
@@ -166,6 +167,56 @@ export function ChannelView({ id }: { id: string }) {
         </div>
       </div>
       {canvas && <Canvas channel={channel} />}
+    </div>
+  )
+}
+
+// 내 에이전트가 맡은 일(내 지시·나를 지목한 @요청)을 하는 중이면 대화 끝에 보여 준다.
+// 채널 대화에 반응해 생각하는 것은 러너가 알리지 않으므로 여기 뜨지 않는다.
+// 내 지시의 답은 에이전트가 쓰는 대로 흘려 보여 준다(다 쓰면 '나에게만' 메시지로 바뀐다).
+function MyAgentWorking({ channelId }: { channelId: string }) {
+  const a = useStore((s) => s.activity[channelId])
+  const reply = useStore((s) => s.replies[channelId])
+  const me = useStore((s) => s.me)
+  const perm = useStore((s) => (a?.permissionId ? s.permissions.find((p) => p.id === a.permissionId) : undefined))
+  if ((!a && !reply) || !me) return null
+  const waiting = a?.state === 'waiting' && !!perm
+  return (
+    <div className="mt-6" role="status" aria-live="polite">
+      <div className="mb-1.5 flex items-center gap-2">
+        <AgentAvatar color={me.color} size={26} online />
+        <span className="text-[14px] font-semibold">{t('common.myAgent')}</span>
+        <span
+          className={cx(
+            'rounded-md px-1.5 text-[11.5px] leading-[18px] font-medium',
+            waiting ? 'bg-amber-bg text-amber' : 'bg-blue-bg text-blue',
+          )}
+        >
+          {waiting ? t('activity.needsPermission') : reply ? t('activity.replying') : t('activity.working')}
+        </span>
+      </div>
+      <div className="pl-[34px]">
+        {waiting ? (
+          // 허용·거부는 입력창 위 승인 영역에서
+          <p className="text-[14px] text-fg-2">
+            {a?.detail} · <span className="text-fg-3">{t('activity.waitingHint')}</span>
+          </p>
+        ) : reply ? (
+          <div className="rounded-2xl bg-sidebar px-4 py-3 text-[15px]">
+            <Markdown text={reply} />
+            <span className="mt-1 inline-block h-4 w-1.5 rounded-sm bg-fg-3 align-middle motion-safe:animate-pulse" aria-hidden />
+          </div>
+        ) : (
+          <div className="flex items-center gap-2.5 text-[14px] text-fg-2">
+            <span className="inline-flex gap-1" aria-hidden>
+              {[0, 180, 360].map((d) => (
+                <span key={d} className="size-1.5 rounded-full bg-fg-3 motion-safe:animate-pulse" style={{ animationDelay: `${d}ms` }} />
+              ))}
+            </span>
+            <span>{a?.detail || t('activity.thinking')}</span>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

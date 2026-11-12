@@ -71,6 +71,7 @@ export function createCodexEngine(host: Host, bin: string, initialModel: string)
   let thread: Promise<string> | null = null
   const queue: string[] = [] // 아직 시작하지 않은 턴
   let active: { lastMessage: string } | null = null // 진행 중인 턴(한 번에 하나)
+  let writing = { itemId: '', text: '' } // 지금 쓰고 있는 메시지(item/agentMessage/delta 로 조각조각 온다)
   const fileChanges = new Map<string, string[]>() // 파일 변경 허락을 물을 때 보여 줄 경로(item id → 경로)
   let stopping = false
   let fails = 0
@@ -216,6 +217,17 @@ export function createCodexEngine(host: Host, bin: string, initialModel: string)
           fileChanges.set(String(it.id), (it.changes ?? []).map((c: Json) => String(c.path ?? '')).filter(Boolean))
           host.toolUsed('Edit', null)
         } else if (it.type === 'webSearch') host.toolUsed('WebSearch', null)
+        else if (it.type === 'agentMessage') {
+          writing = { itemId: String(it.id ?? ''), text: '' }
+          host.replyText('')
+        }
+        break
+      }
+      case 'item/agentMessage/delta': {
+        if (!active || typeof p.delta !== 'string') break
+        if (p.itemId !== writing.itemId) writing = { itemId: String(p.itemId ?? ''), text: '' }
+        writing.text += p.delta
+        host.replyText(writing.text)
         break
       }
       case 'item/completed': {

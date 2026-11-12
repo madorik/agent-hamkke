@@ -8,7 +8,8 @@
 // 여기는 에이전트와 상관없는 일을 한다. 에이전트 프로세스와 주고받는 일은 엔진(engine-*.ts)이 한다.
 // - 메신저 이벤트를 모아(1.5초) 한 턴으로 보낸다. 답할 필요 없는 알림은 다음 이벤트에 얹는다.
 // - 마스터가 에이전트에게만 보낸 지시의 결과(턴의 마지막 답)는 '나에게만' 메시지로 채팅에 올린다.
-// - 지금 무엇을 하는지(생각 중·노션 보는 중·허락 대기)를 마스터 화면에 알린다.
+// - 맡은 일(마스터의 지시·@요청)을 하는 동안 무엇을 하는지(생각 중·노션 보는 중·허락 대기)를 마스터 화면에 알린다.
+//   채널 대화에 반응하는 것은 알리지 않는다(도구 허락 대기만은 늘 알린다).
 // - 도구 실행 허락은 데스크톱 승인함으로 넘기고 마스터의 답을 엔진에 돌려준다.
 // - stdout 엔 앱이 읽는 상태 줄(JSON)만, 로그는 stderr 로.
 import { join } from 'node:path'
@@ -63,6 +64,8 @@ interface Turn {
   channels: Set<string>
   /** 마스터가 에이전트에게만 보낸 지시가 있으면 그 채널. 턴의 마지막 답을 여기에 올린다. */
   masterChannel: string | null
+  /** 맡은 일(마스터의 지시·나를 지목한 @요청)이 있는 채널. '작업 중'은 이 채널에만 보인다. */
+  tasks: Set<string>
   /** 이 턴에서 report_to_master 로 이미 보고한 채널(중복 방지) */
   reported: Set<string>
 }
@@ -79,21 +82,36 @@ function postActivity(channelIds: string[], state: AgentActivityState, detail = 
   api('POST', '/agent-activity', { channelIds, state, detail, permissionId }).catch((e) => log('failed to post activity', e))
 }
 
+const isTask = (d: Delivery) => d.meta.kind === 'master' || d.meta.kind === 'request'
+
+/** 아직 시작하지 않은(뒤에 줄 선) 맡은 일의 채널. 앞 턴이 끝나도 '작업 중'을 내리지 않는다. */
+function queuedTasks(): Set<string> {
+  const s = new Set<string>()
+  for (const t of turns.slice(1)) for (const c of t.tasks) s.add(c)
+  for (const d of batch) if (isTask(d)) s.add(d.meta.channel_id)
+  return s
+}
+
+// 채널 대화에 반응하는 턴은 '작업 중'을 보이지 않는다(마스터가 시킨 일과 @요청만). 도구 허락 대기는 늘 보인다.
 function showActivity(state: 'working' | 'waiting', detail: string, permissionId: string | null = null) {
   const t = turns[0]
   if (!t) return
-  const key = JSON.stringify([state, detail, permissionId, [...t.channels]])
+  const channels = state === 'waiting' ? t.channels : t.tasks
+  const key = JSON.stringify([state, detail, permissionId, [...channels]])
   if (key === shownKey) return
   shownKey = key
-  const stale = [...shown].filter((c) => !t.channels.has(c))
+  const queued = queuedTasks()
+  const stale = [...shown].filter((c) => !channels.has(c) && !queued.has(c))
   postActivity(stale, 'idle')
-  shown = new Set(t.channels)
-  postActivity([...t.channels], state, detail, permissionId)
+  shown = new Set([...channels, ...[...shown].filter((c) => queued.has(c))])
+  postActivity([...channels], state, detail, permissionId)
 }
 
-function clearActivity() {
-  postActivity([...shown], 'idle')
-  shown = new Set()
+/** keepQueued: 줄 선 일이 있는 채널은 남긴다(턴 사이). 끝낼 때는 모두 내린다. */
+function clearActivity(keepQueued = true) {
+  const queued = keepQueued ? queuedTasks() : new Set<string>()
+  postActivity([...shown].filter((c) => !queued.has(c)), 'idle')
+  shown = new Set([...shown].filter((c) => queued.has(c)))
   shownKey = ''
 }
 
@@ -133,6 +151,44 @@ async function replyToMaster(channelId: string, body: string) {
 function afterTurns() {
   if (turns.length) showActivity('working', M.thinking)
   else clearActivity()
+}
+
+// ── 답 흘려 보내기 ────────────────────────────────────────────
+// 마스터 지시의 답을 에이전트가 쓰는 대로 앱에 보낸다(stdout 줄, 앱이 바로 그린다). 중계 서버는 거치지 않는다.
+// 다 쓰면 러너가 답을 '나에게만' 메시지로 올리고, 앱은 그 메시지로 바꿔 그린다.
+
+const STREAM_MS = 60 // 이보다 자주 보내지 않는다
+let streamChannel: string | null = null
+let streamText = ''
+let streamTimer: NodeJS.Timeout | undefined
+
+function flushStream() {
+  streamTimer = undefined
+  if (streamChannel) emit({ type: 'reply_stream', channelId: streamChannel, text: streamText })
+}
+
+function onReplyText(text: string) {
+  const t = turns[0]
+  const channel = t?.masterChannel && !t.reported.has(t.masterChannel) ? t.masterChannel : null
+  if (!channel) return
+  streamChannel = channel
+  streamText = text
+  if (!streamTimer) streamTimer = setTimeout(flushStream, STREAM_MS)
+}
+
+/** 흘려 보내기를 멈춘다(앱에는 아직 안 알림). 흘려 보내던 채널을 돌려준다 */
+function stopStream(): string | null {
+  clearTimeout(streamTimer)
+  streamTimer = undefined
+  const channel = streamChannel
+  streamChannel = null
+  streamText = ''
+  return channel
+}
+
+/** 앱에 그 채널의 흘려 보내기가 끝났다고 알린다(그새 같은 채널에서 다음 답을 쓰기 시작했으면 두고) */
+function endStream(channel: string | null) {
+  if (channel && channel !== streamChannel) emit({ type: 'reply_stream', channelId: channel, text: null })
 }
 
 // ── 도구 실행 허락: 엔진 → 데스크톱 승인함 → 엔진 ─────────────
@@ -210,18 +266,29 @@ const host: Host = {
   emit,
   toolUsed(rawName, input) {
     const channelId = (input as { channel_id?: unknown } | null)?.channel_id
-    if (rawName === `mcp__${SERVER_NAME}__report_to_master` && typeof channelId === 'string') turns[0]?.reported.add(channelId)
+    if (rawName === `mcp__${SERVER_NAME}__report_to_master` && typeof channelId === 'string') {
+      turns[0]?.reported.add(channelId)
+      // 도구로 이미 보고했으니 그 뒤에 쓰는 글은 흘려 보이지 않는다
+      if (channelId === streamChannel) endStream(stopStream())
+    }
     if (!permissions.size) showActivity('working', describeTool(rawName))
   },
+  replyText: onReplyText,
   turnDone({ ok, text }) {
     if (!ok) status('error', text)
     else status(turns.length > 1 ? 'working' : 'online')
     const t = turns.shift()
+    const streamed = stopStream()
+    let posted: Promise<void> = Promise.resolve()
     if (t?.masterChannel && !t.reported.has(t.masterChannel)) {
-      if (!ok) void replyToMaster(t.masterChannel, M.turnFailed(text || M.unknownError))
-      else if (text && !NOTHING_TO_DO.test(text)) void replyToMaster(t.masterChannel, text)
+      if (!ok) posted = replyToMaster(t.masterChannel, M.turnFailed(text || M.unknownError))
+      else if (text && !NOTHING_TO_DO.test(text)) posted = replyToMaster(t.masterChannel, text)
     }
-    afterTurns()
+    // 답이 채팅에 뜬 뒤에 흘려 보이던 글과 '작업 중'을 내린다(사이에 아무것도 없는 순간이 없게)
+    void posted.then(() => {
+      endStream(streamed)
+      afterTurns()
+    })
   },
   mergeTurns(n) {
     if (n <= 1) return
@@ -229,10 +296,12 @@ const host: Host = {
     turns.unshift({
       channels: new Set(lost.flatMap((t) => [...t.channels])),
       masterChannel: lost.findLast((t) => t.masterChannel)?.masterChannel ?? null,
+      tasks: new Set(lost.flatMap((t) => [...t.tasks])),
       reported: new Set(),
     })
   },
   failTurns(n, message) {
+    endStream(stopStream())
     for (const t of turns.splice(0, n)) if (t.masterChannel) void replyToMaster(t.masterChannel, message)
     afterTurns()
   },
@@ -281,9 +350,11 @@ function enqueue(d: Delivery) {
     return
   }
   batch.push(d)
-  // 마스터 지시는 바로 '작업 중'을 보여 준다(묶는 1.5초 동안에도)
-  if (d.meta.kind === 'master') postActivity([d.meta.channel_id], 'working', M.readingInstruction)
-  if (d.meta.kind === 'request') postActivity([d.meta.channel_id], 'working', M.readingRequest)
+  // 맡은 일(마스터 지시·@요청)은 바로 '작업 중'을 보여 준다(묶는 1.5초 동안에도, 앞 턴이 일하는 동안에도)
+  if (isTask(d)) {
+    postActivity([d.meta.channel_id], 'working', d.meta.kind === 'master' ? M.readingInstruction : M.readingRequest)
+    shown.add(d.meta.channel_id)
+  }
   clearTimeout(batchTimer)
   batchTimer = setTimeout(flush, BATCH_MS)
 }
@@ -298,6 +369,7 @@ function flush() {
   sendTurn(all.map(renderChannelTag).join('\n\n'), {
     channels: new Set(active.map((d) => d.meta.channel_id)),
     masterChannel: active.findLast((d) => d.meta.kind === 'master')?.meta.channel_id ?? null,
+    tasks: new Set(active.filter(isTask).map((d) => d.meta.channel_id)),
     reported: new Set(),
   })
 }
@@ -328,7 +400,8 @@ connectRelay(
 function shutdown(code: number) {
   status('stopped')
   for (const id of [...permissions.keys()]) decide(id, 'deny', M.appQuit)
-  clearActivity()
+  endStream(stopStream())
+  clearActivity(false)
   if (!engine.running()) setTimeout(() => process.exit(code), 300) // 마지막 상태 전달을 잠깐 기다린다
   else void engine.stop().then(() => process.exit(code))
 }

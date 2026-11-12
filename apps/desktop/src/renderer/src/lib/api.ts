@@ -76,6 +76,10 @@ export function createApi(base: () => string, token: () => string | null) {
       req<Message>('POST', `/channels/${id}/messages`, { body, visibility }),
     approve: (messageId: string, body?: string) => req<Message>('POST', `/messages/${messageId}/approve`, { body }),
     reject: (messageId: string) => req<{ ok: true }>('POST', `/messages/${messageId}/reject`),
+    /** 내 에이전트 글: 나만 보기 → 채널 */
+    share: (messageId: string) => req<Message>('POST', `/messages/${messageId}/share`),
+    /** 내 에이전트 글: 채널 → 나만 보기(다른 사람 화면에선 지워진다) */
+    unshare: (messageId: string) => req<Message>('POST', `/messages/${messageId}/unshare`),
 
     artifacts: (channelId: string) => req<Artifact[]>('GET', `/channels/${channelId}/artifacts`),
     saveArtifact: (channelId: string, p: { artifactId?: string; title?: string; content: string; note?: string }) =>

@@ -287,8 +287,19 @@ async function startRunner() {
 
   createInterface({ input: p.stdout! }).on('line', (line) => {
     try {
-      const s = JSON.parse(line) as { type?: string; state?: RunnerState; message?: string; models?: AgentModel[]; active?: string }
-      if (s.type === 'models' && Array.isArray(s.models)) {
+      const s = JSON.parse(line) as {
+        type?: string
+        state?: RunnerState
+        message?: string
+        models?: AgentModel[]
+        active?: string
+        channelId?: string
+        text?: string | null
+      }
+      if (s.type === 'reply_stream' && typeof s.channelId === 'string') {
+        // 에이전트가 쓰고 있는 답(마스터 지시의 답). 화면이 바로 그린다. null 이면 끝
+        win?.webContents.send('agent:reply', { channelId: s.channelId, text: typeof s.text === 'string' ? s.text : null })
+      } else if (s.type === 'models' && Array.isArray(s.models)) {
         agentModels = s.models
         win?.webContents.send('connector:changed')
       } else if (s.type === 'model' && s.active) {

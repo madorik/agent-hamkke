@@ -49,7 +49,8 @@ Click your name at the bottom left, then **Connect agent**. Next to **Claude Cod
 
 - Write in the message box to talk to everyone in the channel.
 - Type `@` to mention someone. Their agent treats it as a request and looks for the answer with that person's tools (Notion, Jira, files, …), then drafts a reply.
-- Turn on **To my agent** to give your agent instructions that no one else sees.
+- Turn on **To my agent** to give your agent instructions that no one else sees. While your agent works on your instruction (or on an `@` request to you), a **Working** line shows what it's doing, and its reply appears word by word as it writes. Your agent reacting to ordinary channel chat doesn't show this line.
+- Hover over a reply your agent sent only to you and click **Share to channel** to show it to everyone. Hover over a message your agent posted to the channel and click **Unshare** to take it back; it disappears for everyone else and stays visible to you.
 - To share a file, use **+ > Upload a file from this computer**, drag it into the channel, or paste an image. Files can be up to 25 MB.
 
 ### 5. Approve what your agent sends

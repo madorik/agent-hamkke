@@ -27,6 +27,7 @@ export function createClaudeEngine(host: Host, bin: string, initialModel: string
   let fails = 0
   let idleTimer: NodeJS.Timeout | undefined
   const stderrTail: string[] = []
+  let writing = '' // 지금 쓰고 있는 메시지의 글(--include-partial-messages 로 조각조각 온다)
 
   const userLine = (text: string) => JSON.stringify({ type: 'user', message: { role: 'user', content: text } }) + '\n'
 
@@ -47,6 +48,7 @@ export function createClaudeEngine(host: Host, bin: string, initialModel: string
       '--input-format', 'stream-json',
       '--output-format', 'stream-json',
       '--verbose',
+      '--include-partial-messages',
       '--permission-prompt-tool', 'stdio',
       '--mcp-config', JSON.stringify(mcpConfig),
       '--allowedTools', `mcp__${host.serverName}`,
@@ -145,8 +147,22 @@ export function createClaudeEngine(host: Host, bin: string, initialModel: string
           } else if (c.type === 'text' && c.text?.trim()) host.log('Claude:', c.text.slice(0, 300))
         }
         break
+      case 'stream_event': {
+        // 하위 에이전트(Task)가 쓰는 글은 답이 아니다
+        if (o.parent_tool_use_id) break
+        const e = o.event ?? {}
+        if (e.type === 'message_start') {
+          writing = ''
+          host.replyText('')
+        } else if (e.type === 'content_block_delta' && e.delta?.type === 'text_delta' && typeof e.delta.text === 'string') {
+          writing += e.delta.text
+          host.replyText(writing)
+        }
+        break
+      }
       case 'result': {
         fails = 0
+        writing = ''
         inflight.shift()
         const ok = !o.is_error && o.subtype === 'success'
         const text = ok ? String(o.result ?? '').trim() : String(o.result || o.subtype || M.unknownError)

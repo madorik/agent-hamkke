@@ -40,6 +40,8 @@ export interface Host {
   emit(obj: Record<string, unknown>): void
   /** 지금 턴에서 도구를 쓰기 시작했다(작업 상태 표시) */
   toolUsed(rawName: string, input: unknown): void
+  /** 에이전트가 지금 쓰는 답(이번 메시지의 지금까지 글). 새 메시지를 시작하면 ''. 마스터 화면에 흘려 보여 준다 */
+  replyText(text: string): void
   /** 가장 오래된 턴이 끝났다. 엔진은 받은 순서대로 턴을 끝낸다 */
   turnDone(r: { ok: boolean; text: string }): void
   /** 진행 중이던 앞쪽 n 개 턴을 잃었다. 다시 보낼 거면 하나로 합친다(엔진이 sessionRestarted 를 그 자리에 넣는다) */

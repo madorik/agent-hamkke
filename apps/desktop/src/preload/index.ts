@@ -16,4 +16,10 @@ contextBridge.exposeInMainWorld('am', {
     ipcRenderer.on('connector:changed', h)
     return () => void ipcRenderer.off('connector:changed', h)
   },
+  /** 내 에이전트가 쓰고 있는 답(마스터 지시의 답). text 가 null 이면 다 썼다 */
+  onAgentReply: (fn: (r: { channelId: string; text: string | null }) => void) => {
+    const h = (_e: unknown, r: { channelId: string; text: string | null }) => fn(r)
+    ipcRenderer.on('agent:reply', h)
+    return () => void ipcRenderer.off('agent:reply', h)
+  },
 })

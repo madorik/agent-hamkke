@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Check, Copy, Download, File as FileIcon, FileText, Lock, X } from 'lucide-react'
+import { Check, Copy, Download, File as FileIcon, FileText, Lock, Send, Undo2, X } from 'lucide-react'
 import type { FileMeta, Message } from '@ah/protocol'
 import { fileKind, fmtSize, isImage, saveFile, useFileUrl } from '../lib/files'
 import { systemText, t } from '../lib/i18n'
-import { approveDraft, member, rejectDraft, setCanvas, useStore } from '../lib/store'
+import { approveDraft, member, rejectDraft, setCanvas, shareMessage, unshareMessage, useStore } from '../lib/store'
 import { AgentAvatar, Avatar, Button, Markdown, MentionText, agentLabel, cx, timeLabel, useAutosize, useCopy, type MentionMark } from './ui'
 
 function sameGroup(a: Message | undefined, b: Message) {
@@ -134,18 +134,49 @@ export function MessageRow({ m, prev }: { m: Message; prev?: Message }) {
 
 function Hover({ m }: { m: Message }) {
   const [copied, copy] = useCopy()
+  const [busy, setBusy] = useState(false)
+  const meId = useStore((s) => s.me?.id)
   if (m.kind !== 'text' || m.status === 'pending') return null
+  // 내 에이전트 글은 채널에 공유하거나(나에게만 온 답) 공유를 취소할 수 있다(채널에 나간 글)
+  const mineAgent = m.authorKind === 'agent' && m.authorId === meId
+  const run = async (fn: (id: string) => Promise<void>) => {
+    setBusy(true)
+    await fn(m.id)
+    setBusy(false)
+  }
   return (
-    <div className="mt-1 flex h-7 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+    <div className="mt-1 flex h-7 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
       <button
         type="button"
         aria-label={t('common.copy')}
+        title={t('common.copy')}
         onClick={() => copy(m.body)}
         className="inline-flex size-7 items-center justify-center rounded-md text-fg-3 hover:bg-hover hover:text-fg"
       >
         {copied ? <Check size={14} /> : <Copy size={14} />}
       </button>
+      {mineAgent &&
+        (m.visibility === 'private' ? (
+          <HoverAction icon={<Send size={13} />} label={t('message.share')} hint={t('message.shareHint')} busy={busy} onClick={() => run(shareMessage)} />
+        ) : (
+          <HoverAction icon={<Undo2 size={13} />} label={t('message.unshare')} hint={t('message.unshareHint')} busy={busy} onClick={() => run(unshareMessage)} />
+        ))}
     </div>
+  )
+}
+
+function HoverAction({ icon, label, hint, busy, onClick }: { icon: React.ReactNode; label: string; hint: string; busy: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      title={hint}
+      disabled={busy}
+      onClick={onClick}
+      className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12.5px] font-medium text-fg-3 hover:bg-hover hover:text-fg disabled:opacity-40"
+    >
+      {icon}
+      {label}
+    </button>
   )
 }
 

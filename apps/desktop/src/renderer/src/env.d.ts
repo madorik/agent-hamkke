@@ -37,6 +37,8 @@ interface AmBridge {
   setAgentModel(model: string): Promise<{ ok: boolean; model?: string }>
   openAgentLog(): Promise<void>
   onConnectorChanged(fn: () => void): () => void
+  /** 내 에이전트가 쓰고 있는 답(마스터 지시의 답). text 가 null 이면 다 썼다 */
+  onAgentReply(fn: (r: { channelId: string; text: string | null }) => void): () => void
 }
 
 interface Window {

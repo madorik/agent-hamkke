@@ -44,6 +44,8 @@ interface State {
   permissions: PermissionRequest[]
   /** 내 에이전트가 채널별로 지금 하는 일(작업 중·허락 대기) */
   activity: Record<string, AgentActivity>
+  /** 내 에이전트가 채널별로 지금 쓰고 있는 답(내 지시의 답). 다 쓰면 '나에게만' 메시지로 바뀐다 */
+  replies: Record<string, string>
   /** 이 PC 에 연결된 에이전트(러너) 상태와 고를 수 있는 모델 — 데스크톱 앱에서만 */
   agentStatus: ConnectorStatus | null
   view: View
@@ -66,6 +68,7 @@ export const useStore = create<State>(() => ({
   drafts: [],
   permissions: [],
   activity: {},
+  replies: {},
   agentStatus: null,
   view: { kind: 'home' },
   modal: null,
@@ -195,6 +198,7 @@ export async function boot() {
   if (!agentWatch && window.am) {
     agentWatch = true
     window.am.onConnectorChanged(() => void refreshAgentStatus())
+    window.am.onAgentReply?.((r) => setReply(r.channelId, r.text))
   }
   void refreshAgentStatus()
   const info = await window.am?.info().catch(() => null)
@@ -247,6 +251,7 @@ export function logout() {
     drafts: [],
     permissions: [],
     activity: {},
+    replies: {},
     view: { kind: 'home' },
     canvas: null,
   })
@@ -315,7 +320,35 @@ function sortMessages(list: Message[]) {
   return list.sort((a, b) => a.createdAt - b.createdAt)
 }
 
+// ── 내 에이전트가 쓰고 있는 답 ────────────────────────────────
+
+const replyTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+function dropReply(channelId: string) {
+  clearTimeout(replyTimers.get(channelId))
+  replyTimers.delete(channelId)
+  const { [channelId]: _gone, ...rest } = get().replies
+  if (_gone !== undefined) set({ replies: rest })
+}
+
+/** 러너가 흘려 보낸 답. null(다 씀)이면 진짜 메시지가 올 때까지 잠깐 그대로 둔다(깜빡이지 않게) */
+function setReply(channelId: string, text: string | null) {
+  clearTimeout(replyTimers.get(channelId))
+  replyTimers.delete(channelId)
+  if (text === null) {
+    replyTimers.set(
+      channelId,
+      setTimeout(() => dropReply(channelId), 3000),
+    )
+    return
+  }
+  if (!text) return dropReply(channelId)
+  set({ replies: { ...get().replies, [channelId]: text } })
+}
+
 function upsertMessage(m: Message) {
+  // 내 에이전트의 '나에게만' 답이 왔으면 흘려 보이던 글을 그 메시지로 바꾼다
+  if (m.authorKind === 'agent' && m.authorId === get().me?.id && m.visibility === 'private') dropReply(m.channelId)
   const s = get()
   const list = s.messages[m.channelId]
   if (list) {
@@ -347,6 +380,12 @@ function onEvent(ev: ServerEvent) {
       const isNew = !s.messages[m.channelId]?.some((x) => x.id === m.id && x.status === m.status)
       upsertMessage(m)
       if (isNew) notifyMessage(m)
+      break
+    }
+    case 'message_removed': {
+      // 주인이 에이전트 글의 공유를 취소했다
+      const list = s.messages[ev.channelId]
+      if (list) set({ messages: { ...s.messages, [ev.channelId]: list.filter((x) => x.id !== ev.messageId) } })
       break
     }
     case 'user':
@@ -509,6 +548,22 @@ export async function uploadFiles(channelId: string, files: File[], visibility: 
 export async function approveDraft(id: string, body?: string) {
   const m = await guard(api.approve(id, body))
   if (m) upsertMessage(m)
+}
+
+/** 나에게만 온 내 에이전트의 답을 채널에 공유한다 */
+export async function shareMessage(id: string) {
+  const m = await guard(api.share(id))
+  if (!m) return
+  upsertMessage(m)
+  toast(t('message.shared'))
+}
+
+/** 채널에 나간 내 에이전트 글을 다시 나에게만 보이게 한다 */
+export async function unshareMessage(id: string) {
+  const m = await guard(api.unshare(id))
+  if (!m) return
+  upsertMessage(m)
+  toast(t('message.unshared'))
 }
 
 export async function rejectDraft(id: string) {
