@@ -1,12 +1,13 @@
 // 중계 서버 이벤트 → 에이전트에게 넘길 <channel> 알림.
 // channels 를 받는 Claude Code 세션(커넥터의 push)과 앱이 직접 돌리는 세션(러너) 이 같은 모양을 받도록 한 곳에 둔다.
-import type { Artifact, Channel, Message, ServerEvent, User } from '@ah/protocol'
+import type { Artifact, Channel, Decision, Message, ServerEvent, User } from '@ah/protocol'
 import { log, type Api } from './relay.ts'
 import { intlLocale, M } from './i18n.ts'
 
 export const STAGE: Record<string, string> = M.stage
 
-export type ChannelKind = 'master' | 'master_in_channel' | 'peer' | 'request' | 'approval' | 'system'
+/** decision: 마스터가 결정함에서 정한 답(에이전트가 이어서 처리한다) */
+export type ChannelKind = 'master' | 'master_in_channel' | 'peer' | 'request' | 'approval' | 'system' | 'decision'
 
 export interface Delivery {
   content: string
@@ -59,7 +60,7 @@ export function createInbox(api: Api) {
     return m.authorId === me?.id ? M.withName(owner, me?.name ?? '') : owner
   }
 
-  async function onMessage(m: Message, missed = false): Promise<Delivery | null> {
+  async function onMessage(m: Message, missed = false, decisionId?: string): Promise<Delivery | null> {
     if (!me) return null
     const c = channels.get(m.channelId) ?? (await refreshChannels(), channels.get(m.channelId))
     const base = { channel_id: m.channelId, channel: c?.title ?? '', message_id: m.id }
@@ -105,6 +106,31 @@ export function createInbox(api: Api) {
         // 답이 마스터 승인을 거치는지(auto 면 바로 나간다)
         ...(request ? { approval: me.autoApprove ? 'auto' : 'required' } : {}),
         ...(missed ? { missed: 'true' } : {}),
+        // 마스터가 자리를 비웠다: 마스터 판단이 필요한 건 결정 요청(request_decision)으로 남긴다
+        ...(me.awaySince && !isMaster ? { master_away: 'true' } : {}),
+        // 꺼져 있는 동안 서버가 결정함에 남겨 둔 요청
+        ...(decisionId ? { decision_id: decisionId } : {}),
+      },
+    }
+  }
+
+  /** 마스터가 결정함에서 정한 답 → 에이전트가 이어서 처리 */
+  function onDecision(d: Decision): Delivery | null {
+    if (!me || d.userId !== me.id || d.status !== 'decided' || !d.decidedAt) return null
+    const key = 'decision:' + d.id
+    if (pushed.has(key)) return null
+    pushed.add(key)
+    const c = channels.get(d.channelId)
+    const requester = d.requesterId ? nameOf(d.channelId, d.requesterId) : null
+    return {
+      content: M.decisionMade(d.question, d.answer ?? '', requester, d.context),
+      meta: {
+        channel_id: d.channelId,
+        channel: c?.title ?? '',
+        kind: 'decision',
+        decision_id: d.id,
+        ...(d.messageId ? { message_id: d.messageId } : {}),
+        from: M.masterTag(me.name),
       },
     }
   }
@@ -125,6 +151,8 @@ export function createInbox(api: Api) {
         return null
       case 'message':
         return onMessage(ev.message)
+      case 'decision':
+        return onDecision(ev.decision)
       default:
         return null
     }
@@ -133,9 +161,11 @@ export function createInbox(api: Api) {
   /** 에이전트가 꺼져 있는 동안 since 뒤에 온 @요청(이미 넘긴 건 빼고) */
   async function missed(since: number): Promise<Delivery[]> {
     const list = await api<Message[]>('GET', `/mentions?since=${since}`).catch((e) => (log(e), [] as Message[]))
+    // 그동안 서버가 결정함에 남겨 둔 요청은 그 결정 id 를 같이 준다(처리하면 닫거나 고친다)
+    const open = list.length ? await api<Decision[]>('GET', '/decisions').catch(() => [] as Decision[]) : []
     const out: Delivery[] = []
     for (const m of list) {
-      const d = await onMessage(m, true)
+      const d = await onMessage(m, true, open.find((x) => x.messageId === m.id && x.status === 'open')?.id)
       if (d) out.push(d)
     }
     return out

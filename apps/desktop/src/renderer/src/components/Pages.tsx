@@ -3,6 +3,7 @@ import { Globe, Inbox, Unplug } from 'lucide-react'
 import { LANGUAGES, getLocale, setLocale, t } from '../lib/i18n'
 import { answerPermission, openChannel, setModal, signup, startChannel, useStore } from '../lib/store'
 import { Composer } from './Composer'
+import { WelcomeBack } from './Decisions'
 import { DraftCard } from './Message'
 import { TopBar } from './TopBar'
 import { AgentAvatar, AppMark, Button, cx, timeLabel } from './ui'
@@ -12,6 +13,7 @@ export function Home() {
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col">
       <TopBar />
+      <WelcomeBack />
       <div className="flex flex-1 flex-col items-center justify-center px-6 pb-[14vh]">
         <h1 className="mb-8 text-center text-[28px] font-medium tracking-[-0.01em]">{t('home.title')}</h1>
         <div className="w-full max-w-[46rem]">

@@ -37,6 +37,16 @@ interface AmBridge {
   setAgentModel(model: string): Promise<{ ok: boolean; model?: string }>
   openAgentLog(): Promise<void>
   onConnectorChanged(fn: () => void): () => void
+  /** 입력이 오래 없거나 화면을 잠갔다(true) / 다시 움직인다(false) */
+  onIdle(fn: (idle: boolean) => void): () => void
+  meetingStart(locale: string): Promise<{ ok: true; live: 'starting' | 'off' } | { ok: false; error: 'busy' | 'mic' }>
+  meetingAudio(pcm: Uint8Array): void
+  meetingStop(): Promise<{ audio: string; size: number; seconds: number } | null>
+  meetingDiscard(): Promise<void>
+  meetingShowAudio(path: string): Promise<void>
+  meetingOpenDictation(): Promise<void>
+  meetingReadAudio(path: string): Promise<Uint8Array | null>
+  onMeetingEvent(fn: (ev: Record<string, unknown>) => void): () => void
   /** 내 에이전트가 쓰고 있는 답(마스터 지시의 답). text 가 null 이면 다 썼다 */
   onAgentReply(fn: (r: { channelId: string; text: string | null }) => void): () => void
 }

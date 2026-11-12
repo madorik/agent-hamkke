@@ -6,3 +6,4 @@ dist
 # electron-builder
 apps/desktop/release
 apps/desktop/resources/connector
+apps/desktop/resources/transcriber

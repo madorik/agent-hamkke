@@ -7,5 +7,8 @@
     <true/>
     <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
     <true/>
+    <!-- 회의 녹음: 하드닝된 런타임에서 마이크를 쓰려면 필요하다 -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
   </dict>
 </plist>

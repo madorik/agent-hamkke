@@ -82,7 +82,9 @@ function postActivity(channelIds: string[], state: AgentActivityState, detail = 
   api('POST', '/agent-activity', { channelIds, state, detail, permissionId }).catch((e) => log('failed to post activity', e))
 }
 
-const isTask = (d: Delivery) => d.meta.kind === 'master' || d.meta.kind === 'request'
+// 마스터가 정한 결정(decision)도 마스터의 지시처럼 다룬다
+const fromMaster = (d: Delivery) => d.meta.kind === 'master' || d.meta.kind === 'decision'
+const isTask = (d: Delivery) => fromMaster(d) || d.meta.kind === 'request'
 
 /** 아직 시작하지 않은(뒤에 줄 선) 맡은 일의 채널. 앞 턴이 끝나도 '작업 중'을 내리지 않는다. */
 function queuedTasks(): Set<string> {
@@ -352,7 +354,7 @@ function enqueue(d: Delivery) {
   batch.push(d)
   // 맡은 일(마스터 지시·@요청)은 바로 '작업 중'을 보여 준다(묶는 1.5초 동안에도, 앞 턴이 일하는 동안에도)
   if (isTask(d)) {
-    postActivity([d.meta.channel_id], 'working', d.meta.kind === 'master' ? M.readingInstruction : M.readingRequest)
+    postActivity([d.meta.channel_id], 'working', fromMaster(d) ? M.readingInstruction : M.readingRequest)
     shown.add(d.meta.channel_id)
   }
   clearTimeout(batchTimer)
@@ -368,7 +370,7 @@ function flush() {
   log(`${all.length} event(s) → ${engine.name}`)
   sendTurn(all.map(renderChannelTag).join('\n\n'), {
     channels: new Set(active.map((d) => d.meta.channel_id)),
-    masterChannel: active.findLast((d) => d.meta.kind === 'master')?.meta.channel_id ?? null,
+    masterChannel: active.findLast(fromMaster)?.meta.channel_id ?? null,
     tasks: new Set(active.filter(isTask).map((d) => d.meta.channel_id)),
     reported: new Set(),
   })

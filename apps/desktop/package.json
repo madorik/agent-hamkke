@@ -1,7 +1,7 @@
 {
   "name": "@ah/desktop",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "productName": "Agent Hamkke",
   "description": "People and their own agents working together in one channel",
   "author": "madorik",
@@ -15,7 +15,8 @@
     "start:b": "AH_PROFILE=b electron .",
     "typecheck": "tsc -p tsconfig.json",
     "bundle:connector": "node scripts/bundle-connector.mjs",
-    "dist": "pnpm bundle:connector && electron-vite build && electron-builder"
+    "dist": "pnpm bundle:connector && pnpm build:transcriber && electron-vite build && electron-builder",
+    "build:transcriber": "node scripts/build-transcriber.mjs"
   },
   "devDependencies": {
     "@ah/protocol": "workspace:*",

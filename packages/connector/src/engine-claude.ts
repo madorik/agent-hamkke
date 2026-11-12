@@ -11,7 +11,7 @@ import { M } from './i18n.ts'
 import { agentEnv, IDLE_MS, MAX_FAILS, type AgentModel, type Engine, type Host } from './engine.ts'
 
 const NAME = 'Claude Code'
-const MESSENGER_TOOLS = ['send_message', 'report_to_master', 'propose_document', 'share_file', 'download_file', 'read_channel', 'read_document', 'list_channels']
+const MESSENGER_TOOLS = ['send_message', 'report_to_master', 'request_decision', 'close_decision', 'propose_document', 'share_file', 'download_file', 'read_channel', 'read_document', 'list_channels']
 
 export function createClaudeEngine(host: Host, bin: string, initialModel: string): Engine {
   const TOOL = (name: string) => `mcp__${host.serverName}__${name}`

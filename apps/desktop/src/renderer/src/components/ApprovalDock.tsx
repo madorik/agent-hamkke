@@ -1,6 +1,8 @@
-import { Zap } from 'lucide-react'
+import { Signpost, Zap } from 'lucide-react'
+import type { Message, PermissionRequest } from '@ah/protocol'
 import { t } from '../lib/i18n'
 import { approveAllIn, setAutoApprove, useStore } from '../lib/store'
+import { DecisionCard } from './Decisions'
 import { DraftCard } from './Message'
 import { PermissionCard } from './Pages'
 import { Button } from './ui'
@@ -11,12 +13,51 @@ export function ApprovalDock({ channelId }: { channelId: string }) {
   const allDrafts = useStore((s) => s.drafts)
   const permissions = useStore((s) => s.permissions)
   const activity = useStore((s) => s.activity[channelId])
+  const allDecisions = useStore((s) => s.decisions)
   const me = useStore((s) => s.me)
   const drafts = allDrafts.filter((d) => d.channelId === channelId)
+  const decisions = allDecisions.filter((d) => d.channelId === channelId)
   const perm = activity?.permissionId ? permissions.find((p) => p.id === activity.permissionId) : undefined
   const count = drafts.length + (perm ? 1 : 0)
-  if (!count || !me) return null
+  if (!me) return null
 
+  return (
+    <>
+      {decisions.length > 0 && (
+        <div
+          className="pop-in mb-2 overflow-hidden rounded-[22px] border border-amber/40 bg-bg shadow-[0_6px_24px_rgba(0,0,0,0.06)]"
+          role="region"
+          aria-label={t('decision.dockTitle', { n: decisions.length })}
+        >
+          <div className="flex items-center gap-2 px-4 pt-2.5 pb-1.5">
+            <Signpost size={13} className="shrink-0 text-amber" aria-hidden />
+            <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{t('decision.dockTitle', { n: decisions.length })}</span>
+          </div>
+          <div className="flex max-h-[38vh] flex-col gap-2 overflow-y-auto px-2.5 pb-2.5">
+            {decisions.map((d) => (
+              <DecisionCard key={d.id} d={d} compact />
+            ))}
+          </div>
+        </div>
+      )}
+      {count > 0 && <Dock channelId={channelId} drafts={drafts} perm={perm} count={count} color={me.color} />}
+    </>
+  )
+}
+
+function Dock({
+  channelId,
+  drafts,
+  perm,
+  count,
+  color,
+}: {
+  channelId: string
+  drafts: Message[]
+  perm: PermissionRequest | undefined
+  count: number
+  color: string
+}) {
   return (
     <div className="pop-in mb-2 overflow-hidden rounded-[22px] border border-amber/40 bg-bg shadow-[0_6px_24px_rgba(0,0,0,0.06)]" role="region" aria-label={t('dock.title', { n: count })}>
       <div className="flex items-center gap-2 px-4 pt-2.5 pb-1.5">
@@ -41,7 +82,7 @@ export function ApprovalDock({ channelId }: { channelId: string }) {
             description={perm.description}
             preview={perm.inputPreview}
             at={perm.createdAt}
-            color={me.color}
+            color={color}
           />
         )}
         {drafts.map((d) => (

@@ -83,7 +83,14 @@ for a in "${archs[@]}"; do
 done
 
 # 4) 공개하고, 공증 번호 파일은 지운다(공개 뒤라 Finish release 가 다시 집어 들지 않는다)
-retry gh release edit "$tag" --draft=false --latest
+# 더 새 버전이 이미 Latest 면 이 버전은 Latest 로 만들지 않는다(다운로드 링크가 옛 버전으로 돌아가지 않게)
+latest=$(gh release view --json tagName --jq .tagName 2>/dev/null || true)
+if [ -n "$latest" ] && [ "$latest" != "$tag" ] && [ "$(printf '%s\n%s\n' "${latest#v}" "${tag#v}" | sort -V | tail -1)" = "${latest#v}" ]; then
+  echo "$latest is newer than $tag; publishing $tag without making it Latest"
+  retry gh release edit "$tag" --draft=false --latest=false
+else
+  retry gh release edit "$tag" --draft=false --latest
+fi
 for a in "${archs[@]}"; do
   gh release delete-asset "$tag" "notary-mac-$a.txt" --yes || true
 done

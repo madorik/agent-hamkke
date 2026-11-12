@@ -11,6 +11,7 @@ export interface Mentionable {
   id: string
   name: string
   color: string
+  awaySince?: number | null
 }
 
 export function Composer({
@@ -130,6 +131,8 @@ export function Composer({
             >
               <Avatar name={x.name} color={x.color} size={22} />
               <span className="min-w-0 flex-1 truncate">{x.name}</span>
+              {/* 자리 비운 사람: 그 사람의 에이전트가 받거나 결정함에 남는다 */}
+              {x.awaySince && <span className="shrink-0 text-[12px] text-amber">{t('away.title')}</span>}
             </button>
           ))}
         </div>

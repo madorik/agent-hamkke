@@ -17,6 +17,8 @@ import {
 import type { Channel } from '@ah/protocol'
 import { LANGUAGES, setLocale, stageLabel, t, useLocale, type Dict } from '../lib/i18n'
 import { Button, IconButton, Modal, ModalHeader, Toggle, cx, useCopy } from './ui'
+import { AwayModal } from './Decisions'
+import { MeetingImport } from './Meeting'
 
 export function Modals() {
   const modal = useStore((s) => s.modal)
@@ -34,6 +36,12 @@ export function Modals() {
       </Modal>
       <Modal open={modal?.kind === 'search'} onClose={close} width={560}>
         {modal?.kind === 'search' && <SearchChannels />}
+      </Modal>
+      <Modal open={modal?.kind === 'away'} onClose={close} width={440}>
+        {modal?.kind === 'away' && <AwayModal />}
+      </Modal>
+      <Modal open={modal?.kind === 'meetingImport'} onClose={close} width={560}>
+        {modal?.kind === 'meetingImport' && <MeetingImport channelId={modal.channelId} />}
       </Modal>
     </>
   )

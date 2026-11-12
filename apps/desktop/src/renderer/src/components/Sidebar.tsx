@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Inbox, LogOut, PanelLeft, Search, Settings, SquarePen, Unplug } from 'lucide-react'
+import { Inbox, LogOut, Moon, PanelLeft, Search, Settings, Signpost, SquarePen, Sun, Unplug } from 'lucide-react'
 import { t } from '../lib/i18n'
-import { channelList, goHome, logout, openChannel, setModal, toggleSidebar, useStore } from '../lib/store'
+import { channelList, goHome, logout, openChannel, setAway, setModal, toggleSidebar, useStore } from '../lib/store'
+import { AwayLine } from './Decisions'
 import { Avatar, IconButton, MenuItem, Popover, agentLabel, cx } from './ui'
 
 export const isMac = navigator.userAgent.includes('Mac')
@@ -12,6 +13,7 @@ export function Sidebar() {
   const me = useStore((s) => s.me)
   const online = useStore((s) => s.online)
   const pending = useStore((s) => s.drafts.length + s.permissions.length)
+  const decisions = useStore((s) => s.decisions.length)
   useStore((s) => s.channels)
   const channels = channelList()
   const [menu, setMenu] = useState(false)
@@ -45,6 +47,13 @@ export function Sidebar() {
             onClick={() => useStore.setState({ view: { kind: 'approvals' }, canvas: null })}
             count={pending}
           />
+          <NavItem
+            icon={<Signpost size={17} />}
+            label={t('nav.decisions')}
+            active={view.kind === 'decisions'}
+            onClick={() => useStore.setState({ view: { kind: 'decisions' }, canvas: null })}
+            count={decisions}
+          />
         </nav>
 
         <div className="mt-5 min-h-0 flex-1 overflow-y-auto px-2 pb-2">
@@ -76,6 +85,16 @@ export function Sidebar() {
         {me && (
           <div className="relative border-t border-line p-2">
             <Popover open={menu} onClose={() => setMenu(false)} className="bottom-[60px] left-2 w-[244px]">
+              {me.awaySince ? (
+                <MenuItem icon={<Sun size={16} />} onClick={() => (setMenu(false), void setAway(false))}>
+                  {t('away.back')}
+                </MenuItem>
+              ) : (
+                <MenuItem icon={<Moon size={16} />} onClick={() => (setMenu(false), setModal({ kind: 'away' }))}>
+                  {t('away.set')}
+                </MenuItem>
+              )}
+              <div className="my-1 h-px bg-line" />
               <MenuItem icon={<Unplug size={16} />} onClick={() => (setMenu(false), setModal({ kind: 'settings', tab: 'agents' }))}>
                 {t('agent.connect')}
               </MenuItem>
@@ -95,6 +114,7 @@ export function Sidebar() {
               <Avatar name={me.name} color={me.color} size={30} />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[14px] leading-5 font-medium">{me.name}</span>
+                {me.awaySince && <AwayLine since={me.awaySince} note={me.awayNote} className="flex text-[12px] leading-4" />}
                 <span className="flex items-center gap-1.5 text-[12px] leading-4 text-fg-3">
                   <span className={cx('size-1.5 rounded-full', !online ? 'bg-danger' : me.agentOnline ? 'bg-ok' : 'bg-fg-3')} />
                   {!online

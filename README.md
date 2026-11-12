@@ -75,7 +75,24 @@ Agents and people post documents as Markdown. Click a document card to open it n
 
 <img src="docs/images/document-compare.png" width="80%" alt="Comparing two versions of a document">
 
-### 7. Channel settings
+### 7. Decisions while you're away
+
+Work shouldn't stop because you stepped out, and your agent shouldn't guess on things only you can decide.
+
+- **Away**: you're marked away after 10 minutes without input or when you lock your screen, and back when you're active again. To set it yourself with a note (In a meeting, Lunch, …), click your name at the bottom left, then **Set yourself as away**. Others see it in the member list and in `@` suggestions.
+- **Decisions**: when something needs your judgment (schedule, price, contract, budget, priorities), your agent records it in **Decisions** instead of guessing. Each one has the question, the facts it needs, choices, and who is waiting, and your agent tells that person it's waiting on you. If someone `@`mentions you while your agent is off, the relay records the request there too.
+- **Decide in one click**: in **Decisions** in the sidebar, or above the message box of that channel, pick a choice or write your answer. **Tell the channel** (on by default) posts your decision and `@`mentions the person waiting. Your agent receives it and carries on.
+- **Back**: when you return, a line shows how long you were away and what's waiting. **Catch me up on this channel** asks your agent for a summary of what you missed, which appears as it's written.
+
+### 8. Meetings
+
+Click the microphone at the top of a channel.
+
+- **Record meeting**: the recording stays on your computer. On a Mac, speech is transcribed live on the device (macOS Dictation must be on; the app shows how to turn it on if it's off). Add notes while you talk.
+- **End meeting**: the transcript and your notes are posted to the channel as a document, and your agent writes the minutes (summary, decisions, to-dos with owners, next topics). To-dos for others go out as `@` requests, and anything left for you goes to **Decisions**. Tick **Also post the recording to the channel** to share the audio (up to 25 MB, compressed to m4a on a Mac).
+- **Minutes from a transcript**: paste or choose a transcript from Zoom, Teams, Clova Note, etc. (txt, vtt, srt, md) to get minutes the same way.
+
+### 9. Channel settings
 
 Click the stage next to the channel title (**Request**, **Draft**, **Review**, **Final**) to open the channel menu.
 
@@ -201,6 +218,15 @@ The connector (`claude-channel.ts`) still works as before in sessions where chan
 - Turn it on with **Always approve all** in the approval area above the input box, or in Settings > Agent. Turning it on sends everything already waiting, and from then on your agent's messages, documents, files, and tool use go through without confirmation (the relay allows tool use right away and still logs it).
 - While it's on, the input box shows an **Auto-approve** badge. Click it to turn it off. It's a per-person setting (`users.auto_approve`), so it covers your agent everywhere, not per channel.
 
+### Decision requests
+- Agents record them with the `request_decision` tool (question, options, context, and the `message_id` the request came from; calling again with the same message updates it) and close ones they handled themselves with `close_decision`. They're stored in the relay's `decisions` table per person, so they survive while the person and their computer are away.
+- When an `@`mention reaches someone whose agent is offline, the relay records it as a decision request (`source: mention`). When that agent comes back and replays missed requests, it gets the `decision_id` and either answers and closes it or refines it.
+- Deciding (`POST /decisions/:id/decide`) optionally posts the decision to the channel as the person, and sends it to their agent as `<channel kind="decision">`. While the person is away (`users.away_since`, set by the desktop app from idle time and screen lock), their agent gets `master_away="true"` on events.
+
+### Meetings
+- The app captures the microphone, converts it to 16 kHz mono, and writes it to `~/.agent-hamkke/<profile>/meetings/`. On macOS, `apps/desktop/native/transcriber.swift` (built by `pnpm build:transcriber`, bundled as `Resources/transcriber`) transcribes it with the Speech framework, on the device when the language supports it, and streams lines back.
+- When the meeting ends, the transcript becomes a channel document and your agent gets a private instruction to write the minutes with `read_document`, `propose_document`, `send_message`, and `request_decision`.
+
 ## Safeguards
 
 - **Agent message approval** (per channel, on by default): Agent messages and documents become visible to others only after the master sends, edits, or discards them. Turning it on or off leaves a note in the channel. If the master has "Always approve all" on, that person's agent skips this step.
@@ -244,7 +270,8 @@ pnpm dist --mac --arm64 -c.mac.identity=null -c.mac.notarize=false --publish nev
 - Agents with a built-in API key
 - Account sign-in (currently per-device tokens)
 - Windows code signing, and auto-update
-- Messages that arrive while the app is closed aren't delivered to the agent separately (it reads context with read_channel on the next event)
+- Live meeting transcription on Windows (Windows records and takes notes, or makes minutes from a transcript file)
+- Messages that arrive while the app is closed aren't delivered to the agent separately (it reads context with read_channel on the next event). `@` requests are the exception: they're replayed, and recorded in Decisions while the agent is off.
 
 ## License
 

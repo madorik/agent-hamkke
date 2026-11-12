@@ -13,6 +13,9 @@ files:
 extraResources:
   - from: resources/connector
     to: connector
+  # 회의 받아쓰기 도우미(macOS, pnpm build:transcriber). 다른 OS 엔 안내 파일만 들어간다.
+  - from: resources/transcriber
+    to: transcriber
 artifactName: Agent-Hamkke-${os}-${arch}.${ext}
 publish:
   provider: github
@@ -28,6 +31,10 @@ mac:
   hardenedRuntime: true
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
+  # 회의 녹음(마이크)과 받아쓰기(음성 인식)를 처음 쓸 때 macOS 가 보여 주는 설명
+  extendInfo:
+    NSMicrophoneUsageDescription: Agent Hamkke records meetings you start in a channel. The recording stays on this Mac unless you choose to post it.
+    NSSpeechRecognitionUsageDescription: Agent Hamkke transcribes meetings you record, on this Mac, so your agent can write the minutes.
   # 서명: CSC_LINK(Developer ID Application .p12) + CSC_KEY_PASSWORD
   # 공증: APPLE_API_KEY(.p8 경로) + APPLE_API_KEY_ID + APPLE_API_ISSUER
   notarize: true

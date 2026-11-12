@@ -6,6 +6,8 @@ import { api, guard, sendMessage, setAgentModel, setAutoApprove, setCanvas, setM
 import { ApprovalDock } from './ApprovalDock'
 import { Canvas } from './Canvas'
 import { Composer, type Visibility } from './Composer'
+import { AwayLine, WelcomeBack } from './Decisions'
+import { MeetingBar, MeetingButton } from './Meeting'
 import { MessageRow } from './Message'
 import { TopBar } from './TopBar'
 import { AgentAvatar, Avatar, Button, IconButton, Markdown, MenuItem, Popover, Toggle, agentLabel, cx } from './ui'
@@ -92,6 +94,7 @@ export function ChannelView({ id }: { id: string }) {
           right={
             <>
               <Members channel={channel} />
+              <MeetingButton channelId={id} />
               <Button variant="ghost" className="h-9 gap-1.5 rounded-lg px-2.5" onClick={() => setModal({ kind: 'invite', channelId: id })}>
                 <UserPlus size={17} />
                 {t('channel.invite')}
@@ -109,6 +112,7 @@ export function ChannelView({ id }: { id: string }) {
             </>
           }
         />
+        <WelcomeBack channelId={id} />
         <div
           ref={scroller}
           onScroll={(e) => {
@@ -126,6 +130,7 @@ export function ChannelView({ id }: { id: string }) {
           </div>
         </div>
         <div className="mx-auto w-full max-w-[46rem] px-6 pb-5">
+          <MeetingBar channelId={id} />
           <ApprovalDock channelId={id} />
           <Composer
             key={id}
@@ -366,9 +371,12 @@ function Members({ channel }: { channel: Channel }) {
           <div key={m.id} className="rounded-xl px-2.5 py-2">
             <div className="flex items-center gap-2.5">
               <Avatar name={m.name} color={m.color} size={28} />
-              <span className="flex-1 truncate text-[14px] font-medium">
-                {m.name}
-                {m.id === me?.id && <span className="font-normal text-fg-3">{t('channel.you')}</span>}
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[14px] font-medium">
+                  {m.name}
+                  {m.id === me?.id && <span className="font-normal text-fg-3">{t('channel.you')}</span>}
+                </span>
+                {m.awaySince && <AwayLine since={m.awaySince} note={m.awayNote} className="flex text-[12px]" />}
               </span>
             </div>
             <div className="mt-1.5 flex items-center gap-2.5 pl-[2px]">

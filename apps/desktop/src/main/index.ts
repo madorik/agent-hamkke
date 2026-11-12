@@ -1,9 +1,10 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, powerMonitor, shell } from 'electron'
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, truncateSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { delimiter, dirname, join, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
+import { isRecording, registerMeeting } from './meeting'
 
 // 이름이 Agent Messenger 였을 때의 데이터(로그인·설정, 커넥터 설정)를 새 이름 폴더로 한 번 옮긴다
 function moveLegacy(from: string, to: string) {
@@ -145,6 +146,7 @@ function runnerScript(): string {
 
 const profileDir = () => join(homedir(), '.agent-hamkke', PROFILE)
 const connectorConfigPath = () => join(profileDir(), 'connector.json')
+registerMeeting(() => win, profileDir)
 const runnerLogPath = () => join(profileDir(), 'runner.log')
 
 interface ConnectorFile {
@@ -448,10 +450,35 @@ app.whenReady().then(() => {
   createWindow()
   loadModelCache()
   void startRunner() // 연결해 둔 적이 있으면 앱을 켤 때 에이전트도 같이 켠다
+  watchIdle()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
+
+// ── 자리 비움 감지 ───────────────────────────────────────────
+// 입력이 IDLE_S 초 없거나 화면을 잠그거나 잠자기에 들어가면 화면에 알린다. 화면이 중계 서버에 자리 비움을 알린다.
+const IDLE_S = Number(process.env.AH_IDLE_S ?? 600)
+let idle = false
+
+function setIdle(v: boolean) {
+  // 회의 녹음 중엔 키보드·마우스를 안 써도 자리에 있다
+  if (v && isRecording()) v = false
+  if (idle === v) return
+  idle = v
+  win?.webContents.send('presence:idle', v)
+}
+
+function watchIdle() {
+  powerMonitor.on('lock-screen', () => setIdle(true))
+  powerMonitor.on('suspend', () => setIdle(true))
+  powerMonitor.on('unlock-screen', () => setIdle(powerMonitor.getSystemIdleTime() >= IDLE_S))
+  powerMonitor.on('resume', () => setIdle(powerMonitor.getSystemIdleTime() >= IDLE_S))
+  setInterval(() => {
+    const state = powerMonitor.getSystemIdleState(IDLE_S)
+    setIdle(state === 'idle' || state === 'locked')
+  }, 15_000)
+}
 
 app.on('window-all-closed', () => {
   if (!isMac) app.quit()

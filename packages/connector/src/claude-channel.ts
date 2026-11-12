@@ -12,7 +12,7 @@ import { z } from 'zod'
 import { mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, extname, join, resolve } from 'node:path'
-import type { Artifact, Channel, Message } from '@ah/protocol'
+import type { Artifact, Channel, Decision, Message } from '@ah/protocol'
 import { loadConfig, profile, profileDir } from './config.ts'
 import { connectRelay, createApi, createFileApi, log } from './relay.ts'
 import { createInbox, describeFile, fmtSize, fmtTime, STAGE } from './inbox.ts'
@@ -139,6 +139,30 @@ const TOOLS = [
       required: ['document_id'],
     },
   },
+  {
+    name: 'request_decision',
+    description: M.tool.request_decision,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        channel_id: { type: 'string' },
+        question: { type: 'string', description: M.tool.request_decision_question },
+        options: { type: 'array', items: { type: 'string' }, description: M.tool.request_decision_options },
+        context: { type: 'string', description: M.tool.request_decision_context },
+        message_id: { type: 'string', description: M.tool.request_decision_message },
+      },
+      required: ['channel_id', 'question'],
+    },
+  },
+  {
+    name: 'close_decision',
+    description: M.tool.close_decision,
+    inputSchema: {
+      type: 'object',
+      properties: { decision_id: { type: 'string' }, note: { type: 'string', description: M.tool.close_decision_note } },
+      required: ['decision_id', 'note'],
+    },
+  },
 ]
 
 const Args = {
@@ -155,6 +179,14 @@ const Args = {
   read_document: z.object({ document_id: z.string(), version: z.number().optional() }),
   share_file: z.object({ channel_id: z.string(), path: z.string().min(1), note: z.string().optional(), to_master: z.boolean().optional() }),
   download_file: z.object({ file_id: z.string().min(1) }),
+  request_decision: z.object({
+    channel_id: z.string(),
+    question: z.string().min(1),
+    options: z.array(z.string()).optional(),
+    context: z.string().optional(),
+    message_id: z.string().optional(),
+  }),
+  close_decision: z.object({ decision_id: z.string().min(1), note: z.string().min(1) }),
 }
 
 // ── 파일 ───────────────────────────────────────────────────────
@@ -309,6 +341,22 @@ async function runTool(name: string, raw: unknown): Promise<string> {
         '',
         v.content,
       ].join('\n')
+    }
+    case 'request_decision': {
+      const a = Args.request_decision.parse(raw)
+      const d = await api<Decision>('POST', '/decisions', {
+        channelId: a.channel_id,
+        question: a.question,
+        options: a.options,
+        context: a.context,
+        messageId: a.message_id,
+      })
+      return M.decisionRecorded(d.id)
+    }
+    case 'close_decision': {
+      const a = Args.close_decision.parse(raw)
+      await api<Decision>('POST', `/decisions/${a.decision_id}/resolve`, { note: a.note })
+      return M.decisionClosed
     }
   }
   throw new Error(M.unknownTool(name))

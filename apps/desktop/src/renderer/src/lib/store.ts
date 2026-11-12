@@ -1,15 +1,17 @@
 import { create } from 'zustand'
-import type { AgentActivity, Artifact, Channel, Message, PermissionRequest, ServerEvent, User } from '@ah/protocol'
+import type { AgentActivity, Artifact, Channel, Decision, Message, PermissionRequest, ServerEvent, User } from '@ah/protocol'
 import { ApiError, createApi } from './api'
-import { applyLocale, getLocale, t } from './i18n'
+import { applyLocale, getLocale, intlLocale, t } from './i18n'
 
-export type View = { kind: 'home' } | { kind: 'channel'; id: string } | { kind: 'approvals' }
+export type View = { kind: 'home' } | { kind: 'channel'; id: string } | { kind: 'approvals' } | { kind: 'decisions' }
 export type Modal =
   | null
   | { kind: 'settings'; tab: 'general' | 'agents' | 'account' }
   | { kind: 'invite'; channelId: string }
   | { kind: 'search' }
   | { kind: 'join' }
+  | { kind: 'away' }
+  | { kind: 'meetingImport'; channelId: string }
 export type Canvas = null | { mode: 'list' } | { mode: 'new' } | { mode: 'view'; artifactId: string; version: number | null }
 export type Theme = 'system' | 'light' | 'dark'
 
@@ -46,6 +48,10 @@ interface State {
   activity: Record<string, AgentActivity>
   /** 내 에이전트가 채널별로 지금 쓰고 있는 답(내 지시의 답). 다 쓰면 '나에게만' 메시지로 바뀐다 */
   replies: Record<string, string>
+  /** 내가 정해야 할 일(아직 안 정한 결정 요청) */
+  decisions: Decision[]
+  /** 방금 자리에서 돌아왔다: 비운 동안을 요약해 보여 준다(닫으면 null) */
+  welcomeBack: { since: number; at: number } | null
   /** 이 PC 에 연결된 에이전트(러너) 상태와 고를 수 있는 모델 — 데스크톱 앱에서만 */
   agentStatus: ConnectorStatus | null
   view: View
@@ -69,6 +75,8 @@ export const useStore = create<State>(() => ({
   permissions: [],
   activity: {},
   replies: {},
+  decisions: [],
+  welcomeBack: null,
   agentStatus: null,
   view: { kind: 'home' },
   modal: null,
@@ -122,7 +130,7 @@ export function member(channelId: string, userId: string | null) {
 }
 
 function badge() {
-  const n = get().drafts.length + get().permissions.length
+  const n = get().drafts.length + get().permissions.length + get().decisions.length
   window.am?.setBadge(n)
 }
 
@@ -199,6 +207,7 @@ export async function boot() {
     agentWatch = true
     window.am.onConnectorChanged(() => void refreshAgentStatus())
     window.am.onAgentReply?.((r) => setReply(r.channelId, r.text))
+    window.am.onIdle?.(onIdle)
   }
   void refreshAgentStatus()
   const info = await window.am?.info().catch(() => null)
@@ -222,6 +231,8 @@ export async function boot() {
   set({ booted: true })
   await refreshAll().catch(() => {})
   connect()
+  // 저절로 켜진 자리 비움이 남아 있는데 앱을 다시 열었다 → 돌아온 것
+  if (get().me?.awaySince && autoAway) void setAway(false)
 }
 
 export async function signup(name: string, relayUrl?: string) {
@@ -252,17 +263,25 @@ export function logout() {
     permissions: [],
     activity: {},
     replies: {},
+    decisions: [],
+    welcomeBack: null,
     view: { kind: 'home' },
     canvas: null,
   })
 }
 
 async function refreshAll() {
-  const [channels, approvals] = await Promise.all([api.channels(), api.approvals()])
+  const [channels, approvals, decisions] = await Promise.all([
+    api.channels(),
+    api.approvals(),
+    // 예전 중계 서버엔 결정함이 없다
+    api.decisions().catch(() => [] as Decision[]),
+  ])
   set({
     channels: Object.fromEntries(channels.map((c) => [c.id, c])),
     drafts: approvals.messages,
     permissions: approvals.permissions,
+    decisions,
   })
   badge()
   const v = get().view
@@ -389,11 +408,17 @@ function onEvent(ev: ServerEvent) {
       break
     }
     case 'user':
-      if (ev.user.id === s.me?.id) {
-        set({ me: ev.user })
-        rememberMe(ev.user)
-      }
+      if (ev.user.id === s.me?.id) applyMe(ev.user)
       break
+    case 'decision': {
+      const d = ev.decision
+      const had = s.decisions.some((x) => x.id === d.id)
+      const rest = s.decisions.filter((x) => x.id !== d.id)
+      set({ decisions: d.status === 'open' ? [d, ...rest] : rest })
+      badge()
+      if (d.status === 'open' && !had) notify(t('notify.decision'), d.question, () => set({ view: { kind: 'decisions' }, canvas: null }))
+      break
+    }
     case 'channel':
       set({ channels: { ...s.channels, [ev.channel.id]: ev.channel } })
       break
@@ -407,12 +432,15 @@ function onEvent(ev: ServerEvent) {
       break
     }
     case 'presence': {
+      // 자리 비움은 새 중계 서버만 보낸다(없으면 그대로 둔다)
+      const away = ev.awaySince !== undefined ? { awaySince: ev.awaySince, awayNote: ev.awayNote ?? '' } : {}
+      const patch = { agentOnline: ev.agentOnline, agentKind: ev.agentKind, ...away }
       const channels = Object.fromEntries(
         Object.entries(s.channels).map(([id, c]) => [
           id,
           {
             ...c,
-            members: c.members.map((m) => (m.id === ev.userId ? { ...m, agentOnline: ev.agentOnline, agentKind: ev.agentKind } : m)),
+            members: c.members.map((m) => (m.id === ev.userId ? { ...m, ...patch } : m)),
           },
         ]),
       )
@@ -597,6 +625,72 @@ export async function setAutoApprove(on: boolean) {
     for (const d of [...get().drafts]) await approveDraft(d.id)
   }
   toast(t(on ? 'auto.enabled' : 'auto.disabled'))
+}
+
+// ── 자리 비움 ────────────────────────────────────────────────
+// 입력이 없거나 화면을 잠그면(메인 프로세스가 알려 줌) 자동으로 켜고, 다시 움직이면 끈다.
+// 사람이 직접 켠 자리 비움(예: '휴가 중')은 움직여도 그대로 둔다.
+
+let autoAway = LS.get('autoAway') === '1'
+
+/** 내 정보 반영. 자리에서 돌아왔으면 비운 동안을 보여 준다 */
+function applyMe(user: User) {
+  const from = get().me?.awaySince
+  if (from && !user.awaySince) set({ welcomeBack: { since: from, at: Date.now() } })
+  if (user.awaySince) set({ welcomeBack: null })
+  set({ me: user })
+  rememberMe(user)
+}
+
+let awaySeq = 0
+
+export async function setAway(on: boolean, note?: string, auto = false) {
+  // 저절로 켠 자리 비움의 응답이 사람이 직접 켠 것보다 늦게 와도 '직접 켬'이 남게 마지막 요청만 반영한다
+  const seq = ++awaySeq
+  const r = await guard(api.setAway(on, on ? note : undefined))
+  if (!r) return
+  if (seq === awaySeq) {
+    autoAway = on && auto
+    LS.set('autoAway', autoAway ? '1' : null)
+  }
+  applyMe(r.user)
+}
+
+function onIdle(idle: boolean) {
+  const me = get().me
+  if (!me || !get().online) return
+  if (idle && !me.awaySince) void setAway(true, undefined, true)
+  else if (!idle && me.awaySince && autoAway) void setAway(false)
+}
+
+export function closeWelcome() {
+  set({ welcomeBack: null })
+}
+
+/** 자리 비운 동안 이 채널에서 있었던 일을 내 에이전트에게 요약받는다(답은 흘려 보인다) */
+export async function catchUp(channelId: string, since: number) {
+  set({ welcomeBack: null })
+  const at = new Date(since).toLocaleString(intlLocale(), { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  await sendMessage(channelId, t('welcome.catchUpPrompt', { since: at }), 'private')
+}
+
+// ── 결정함 ──────────────────────────────────────────────────
+
+export async function decide(id: string, answer: string, notify: boolean): Promise<boolean> {
+  const r = await guard(api.decide(id, answer, notify))
+  if (!r) return false
+  set({ decisions: get().decisions.filter((d) => d.id !== id) })
+  badge()
+  if (r.message) upsertMessage(r.message)
+  toast(t('decision.decided'))
+  return true
+}
+
+export async function dismissDecision(id: string) {
+  const r = await guard(api.dismissDecision(id))
+  if (!r) return
+  set({ decisions: get().decisions.filter((d) => d.id !== id) })
+  badge()
 }
 
 export async function answerPermission(id: string, behavior: 'allow' | 'deny') {

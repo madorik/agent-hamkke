@@ -1,4 +1,4 @@
-import type { Approvals, Artifact, Channel, Message, PermissionRequest, Stage, UploadTicket, User } from '@ah/protocol'
+import type { Approvals, Artifact, Channel, Decision, Message, PermissionRequest, Stage, UploadTicket, User } from '@ah/protocol'
 import { getLocale, t } from './i18n'
 
 export class ApiError extends Error {
@@ -60,6 +60,14 @@ export function createApi(base: () => string, token: () => string | null) {
     rename: (name: string) => req<{ user: User }>('PATCH', '/me', { name }),
     /** 항상 모두 승인 켜고 끄기 */
     setAutoApprove: (autoApprove: boolean) => req<{ user: User }>('PATCH', '/me', { autoApprove }),
+    /** 자리 비움 켜고 끄기(한마디는 켤 때만) */
+    setAway: (away: boolean, awayNote?: string) => req<{ user: User }>('PATCH', '/me', { away, awayNote }),
+
+    /** 결정 요청: 기본은 아직 안 정한 것, all 이면 지난 것까지 */
+    decisions: (all = false) => req<Decision[]>('GET', `/decisions${all ? '?status=all' : ''}`),
+    decide: (id: string, answer: string, notify: boolean) =>
+      req<{ decision: Decision; message: Message | null }>('POST', `/decisions/${id}/decide`, { answer, notify }),
+    dismissDecision: (id: string) => req<Decision>('POST', `/decisions/${id}/dismiss`),
     agentToken: (agentKind: string) => req<{ token: string }>('POST', '/agent-tokens', { agentKind }),
 
     channels: () => req<Channel[]>('GET', '/channels'),
