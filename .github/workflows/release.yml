@@ -1,24 +1,36 @@
 # Push a tag like v0.1.0 (matching apps/desktop/package.json "version") to build and publish a release.
-# macOS builds are signed with a Developer ID certificate and notarized; Windows builds are not signed yet.
+# macOS builds are signed with a Developer ID certificate and sent to Apple for notarization; Windows builds are not signed yet.
+# The build doesn't wait for Apple: finish-release.yml publishes the draft once Apple has notarized it.
 name: Release
 
 on:
   push:
     tags: ['v*']
+  # Build a tag that's already pushed again (Actions > Release > Run workflow)
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to build, e.g. v0.2.0
+        required: true
 
 permissions:
   contents: write
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
 
 jobs:
   draft:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
       - name: Tag must match the app version
         run: |
           version="v$(jq -r .version apps/desktop/package.json)"
-          if [ "$version" != "$GITHUB_REF_NAME" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME doesn't match apps/desktop/package.json ($version)"
+          if [ "$version" != "$TAG" ]; then
+            echo "::error::Tag $TAG doesn't match apps/desktop/package.json ($version)"
             exit 1
           fi
       # Create the draft once so the macOS and Windows jobs upload to the same release.
@@ -26,26 +38,29 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 ||
-            gh release create "$GITHUB_REF_NAME" --draft --title "Agent Hamkke $GITHUB_REF_NAME" --generate-notes
+          gh release view "$TAG" >/dev/null 2>&1 ||
+            gh release create "$TAG" --draft --title "Agent Hamkke $TAG" --generate-notes
 
-  # arm64 와 x64 를 따로 동시에 빌드한다(Apple 공증을 기다리는 시간이 겹치게)
+  # arm64 와 x64 를 따로 동시에 빌드한다. 한쪽이 실패해도 다른 쪽은 끝까지 간다.
   mac:
     needs: draft
     runs-on: macos-latest
+    timeout-minutes: 30
     strategy:
+      fail-fast: false
       matrix:
         arch: [arm64, x64]
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Build, sign, and notarize
-        working-directory: apps/desktop
+      - name: Check the signing secrets
         env:
           CSC_LINK: ${{ secrets.MAC_CERT_P12_BASE64 }}
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
@@ -59,22 +74,54 @@ jobs:
               exit 1
             fi
           done
-          export APPLE_API_KEY="$RUNNER_TEMP/AuthKey.p8"
-          printf '%s\n' "$APPLE_API_KEY_P8" > "$APPLE_API_KEY"
-          pnpm run dist --mac --${{ matrix.arch }} --publish never
-      - name: Upload to the release
+      # Apple 키를 넘기지 않으므로 electron-builder 는 공증을 건너뛰고 서명만 한다(공증은 다음 단계).
+      - name: Build and sign
+        working-directory: apps/desktop
+        env:
+          CSC_LINK: ${{ secrets.MAC_CERT_P12_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+        run: pnpm run dist --mac --${{ matrix.arch }} --publish never
+      # 보내기만 하고 기다리지 않는다. 받은 번호는 초안에 올려 두고 finish-release.yml 이 확인한다.
+      - name: Send to Apple for notarization
+        working-directory: apps/desktop/release
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          key="$RUNNER_TEMP/AuthKey.p8"
+          printf '%s\n' "$APPLE_API_KEY_P8" > "$key"
+          for i in 1 2 3 4 5; do
+            out=$(xcrun notarytool submit Agent-Hamkke-mac-${{ matrix.arch }}.dmg \
+              --key "$key" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER" --output-format json) && break
+            echo "Sending failed (try $i), trying again"
+            sleep $((i * 30))
+          done
+          id=$(jq -r '.id // empty' <<<"${out:-}")
+          if [ -z "$id" ]; then
+            echo "::error::Couldn't send the build to Apple for notarization"
+            exit 1
+          fi
+          echo "Apple submission $id"
+          echo "$id" > notary-mac-${{ matrix.arch }}.txt
+      - name: Upload to the draft
+        working-directory: apps/desktop/release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload "$GITHUB_REF_NAME" --clobber \
-            apps/desktop/release/Agent-Hamkke-mac-${{ matrix.arch }}.dmg \
-            apps/desktop/release/Agent-Hamkke-mac-${{ matrix.arch }}.zip
+          gh release upload "$TAG" --clobber \
+            Agent-Hamkke-mac-${{ matrix.arch }}.dmg \
+            Agent-Hamkke-mac-${{ matrix.arch }}.zip \
+            notary-mac-${{ matrix.arch }}.txt
 
   windows:
     needs: draft
     runs-on: windows-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -84,17 +131,16 @@ jobs:
       - name: Build (unsigned)
         working-directory: apps/desktop
         run: pnpm run dist --win --x64 --publish never
-      - name: Upload to the release
+      - name: Upload to the draft
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$GITHUB_REF_NAME" --clobber apps/desktop/release/Agent-Hamkke-win-x64.exe
+        run: gh release upload "$TAG" --clobber apps/desktop/release/Agent-Hamkke-win-x64.exe
 
-  publish:
+  # Apple 이 끝냈으면 바로 공개하고, 아직이면 finish-release.yml 의 30분 주기 확인이 이어받는다.
+  finish:
     needs: [mac, windows]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Publish the release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+    uses: ./.github/workflows/finish-release.yml
+    with:
+      tag: ${{ inputs.tag || github.ref_name }}
+    secrets: inherit

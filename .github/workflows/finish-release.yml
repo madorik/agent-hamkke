@@ -1,0 +1,68 @@
+# Publishes a draft release once Apple has notarized its macOS builds (see .github/scripts/finish-release.sh).
+# release.yml calls this right after building. If Apple is slow, the schedule below checks again every 30 minutes,
+# so a slow notary service delays the release instead of failing the build. You can also run it by hand.
+name: Finish release
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to finish, e.g. v0.2.0 (empty = the draft waiting for Apple)
+        required: false
+  schedule:
+    - cron: '*/30 * * * *'
+
+permissions:
+  contents: write
+
+jobs:
+  # Start a macOS runner only when a draft is waiting for Apple (it has notary-mac-*.txt files).
+  find:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.find.outputs.tag }}
+    steps:
+      - id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          if [ -z "$TAG" ]; then
+            for t in $(gh release list --json tagName,isDraft --jq '.[] | select(.isDraft) | .tagName'); do
+              if [ "$(gh release view "$t" --json assets --jq '[.assets[].name | select(startswith("notary-mac-"))] | length')" -ge 2 ]; then
+                TAG=$t
+                break
+              fi
+            done
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          if [ -n "$TAG" ]; then echo "Finishing $TAG"; else echo "No draft is waiting for Apple"; fi
+
+  finish:
+    needs: find
+    if: needs.find.outputs.tag != ''
+    runs-on: macos-latest
+    timeout-minutes: 75
+    concurrency:
+      group: finish-release-${{ needs.find.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+      - name: Wait for Apple, staple, and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          export APPLE_API_KEY="$RUNNER_TEMP/AuthKey.p8"
+          printf '%s\n' "$APPLE_API_KEY_P8" > "$APPLE_API_KEY"
+          bash .github/scripts/finish-release.sh "${{ needs.find.outputs.tag }}" 45
