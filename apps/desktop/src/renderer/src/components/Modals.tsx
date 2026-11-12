@@ -3,7 +3,9 @@ import { Bot, Check, Copy, FolderOpen, Hash, KeyRound, LogIn, Monitor, Moon, Rot
 import {
   api,
   channelList,
+  checkUpdate,
   guard,
+  installUpdate,
   joinByCode,
   logout,
   openChannel,
@@ -152,7 +154,47 @@ function GeneralTab() {
       <SettingRow label={t('settings.server')} sub={relayUrl}>
         <span />
       </SettingRow>
+      <VersionRow />
     </>
+  )
+}
+
+/** 지금 버전과 업데이트(설치한 앱만 확인한다) */
+function VersionRow() {
+  const u = useStore((s) => s.update)
+  const [busy, setBusy] = useState(false)
+  const sub = !u?.enabled
+    ? t('update.dev')
+    : u.state === 'ready'
+      ? t('update.ready', { version: u.version ?? '' })
+      : u.state === 'downloading'
+        ? t('update.downloading', { version: u.version ?? '', percent: u.percent ?? 0 })
+        : u.state === 'checking'
+          ? t('update.checking')
+          : u.state === 'error'
+            ? t('update.failed')
+            : t('update.auto')
+  return (
+    <SettingRow label={t('update.version', { version: u?.current ?? '' })} sub={sub}>
+      {u?.state === 'ready' ? (
+        <Button className="h-8 px-3.5 text-[13px]" onClick={() => void installUpdate()}>
+          {t('update.restart')}
+        </Button>
+      ) : (
+        <Button
+          variant="secondary"
+          disabled={!u?.enabled || busy || u.state === 'downloading'}
+          className="h-8 px-3.5 text-[13px]"
+          onClick={async () => {
+            setBusy(true)
+            await checkUpdate()
+            setBusy(false)
+          }}
+        >
+          {t('update.check')}
+        </Button>
+      )}
+    </SettingRow>
   )
 }
 

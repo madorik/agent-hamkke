@@ -343,7 +343,7 @@ let batch: Delivery[] = []
 let held: Delivery[] = [] // 답할 필요 없는 알림은 다음 이벤트에 얹어 보낸다(턴 낭비 방지)
 let batchTimer: NodeJS.Timeout | undefined
 
-const passive = (d: Delivery) => d.meta.kind === 'system' || (d.meta.kind === 'approval' && d.meta.result === 'approved')
+const passive = (d: Delivery) => d.meta.kind === 'system' || d.meta.kind === 'task' || (d.meta.kind === 'approval' && d.meta.result === 'approved')
 
 function enqueue(d: Delivery) {
   if (passive(d)) {

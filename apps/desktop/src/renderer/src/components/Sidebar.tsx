@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { Inbox, LogOut, Moon, PanelLeft, Search, Settings, Signpost, SquarePen, Sun, Unplug } from 'lucide-react'
+import { ArrowUpCircle, Inbox, ListTodo, LogOut, Moon, PanelLeft, Search, Settings, Signpost, SquarePen, Sun, Unplug } from 'lucide-react'
 import { t } from '../lib/i18n'
-import { channelList, goHome, logout, openChannel, setAway, setModal, toggleSidebar, useStore } from '../lib/store'
+import { channelList, goHome, installUpdate, logout, openChannel, setAway, setModal, toggleSidebar, useStore } from '../lib/store'
 import { AwayLine } from './Decisions'
 import { Avatar, IconButton, MenuItem, Popover, agentLabel, cx } from './ui'
 
@@ -14,6 +14,7 @@ export function Sidebar() {
   const online = useStore((s) => s.online)
   const pending = useStore((s) => s.drafts.length + s.permissions.length)
   const decisions = useStore((s) => s.decisions.length)
+  const myTasks = useStore((s) => s.myTasks.length)
   useStore((s) => s.channels)
   const channels = channelList()
   const [menu, setMenu] = useState(false)
@@ -54,6 +55,14 @@ export function Sidebar() {
             onClick={() => useStore.setState({ view: { kind: 'decisions' }, canvas: null })}
             count={decisions}
           />
+          <NavItem
+            icon={<ListTodo size={17} />}
+            label={t('nav.tasks')}
+            active={view.kind === 'tasks'}
+            onClick={() => useStore.setState({ view: { kind: 'tasks' }, canvas: null })}
+            count={myTasks}
+            quiet
+          />
         </nav>
 
         <div className="mt-5 min-h-0 flex-1 overflow-y-auto px-2 pb-2">
@@ -81,6 +90,8 @@ export function Sidebar() {
             )
           })}
         </div>
+
+        <UpdateNotice />
 
         {me && (
           <div className="relative border-t border-line p-2">
@@ -132,6 +143,27 @@ export function Sidebar() {
   )
 }
 
+/** 새 버전을 받아 두었으면 다시 시작해 업데이트할 수 있게 */
+function UpdateNotice() {
+  const u = useStore((s) => s.update)
+  if (!u?.enabled || u.state !== 'ready') return null
+  return (
+    <div className="pop-in mx-2 mb-2 rounded-xl border border-line bg-bg p-2.5 text-[13px]" role="status">
+      <div className="flex items-center gap-1.5 font-medium">
+        <ArrowUpCircle size={15} className="text-blue" />
+        {t('update.ready', { version: u.version ?? '' })}
+      </div>
+      <button
+        type="button"
+        onClick={() => void installUpdate()}
+        className="mt-2 h-8 w-full rounded-full bg-accent text-[13px] font-medium text-accent-fg hover:opacity-85"
+      >
+        {t('update.restart')}
+      </button>
+    </div>
+  )
+}
+
 function NavItem({
   icon,
   label,
@@ -139,6 +171,7 @@ function NavItem({
   active,
   hint,
   count,
+  quiet,
 }: {
   icon: React.ReactNode
   label: string
@@ -146,6 +179,8 @@ function NavItem({
   active?: boolean
   hint?: string
   count?: number
+  /** 숫자를 눈에 덜 띄게(처리할 것이 아니라 남은 개수) */
+  quiet?: boolean
 }) {
   return (
     <button
@@ -156,11 +191,14 @@ function NavItem({
       <span className="text-fg">{icon}</span>
       <span className="flex-1 text-left">{label}</span>
       {hint && <span className="text-[12px] text-fg-3 opacity-0 group-hover:opacity-100">{hint}</span>}
-      {!!count && (
-        <span className="min-w-5 rounded-full bg-amber px-1.5 text-center text-[11px] leading-5 font-semibold text-white dark:text-black">
-          {count}
-        </span>
-      )}
+      {!!count &&
+        (quiet ? (
+          <span className="min-w-5 text-center text-[12px] text-fg-3">{count}</span>
+        ) : (
+          <span className="min-w-5 rounded-full bg-amber px-1.5 text-center text-[11px] leading-5 font-semibold text-white dark:text-black">
+            {count}
+          </span>
+        ))}
     </button>
   )
 }

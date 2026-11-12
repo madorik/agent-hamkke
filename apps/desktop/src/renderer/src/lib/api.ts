@@ -1,4 +1,4 @@
-import type { Approvals, Artifact, Channel, Decision, Message, PermissionRequest, Stage, UploadTicket, User } from '@ah/protocol'
+import type { Approvals, Artifact, Channel, Decision, Message, PermissionRequest, Stage, Task, UploadTicket, User } from '@ah/protocol'
 import { getLocale, t } from './i18n'
 
 export class ApiError extends Error {
@@ -68,6 +68,15 @@ export function createApi(base: () => string, token: () => string | null) {
     decide: (id: string, answer: string, notify: boolean) =>
       req<{ decision: Decision; message: Message | null }>('POST', `/decisions/${id}/decide`, { answer, notify }),
     dismissDecision: (id: string) => req<Decision>('POST', `/decisions/${id}/dismiss`),
+
+    /** 할 일: 채널의 남은·최근 끝낸 일 / 내가 맡은 남은 일 */
+    tasks: (channelId: string) => req<Task[]>('GET', `/channels/${channelId}/tasks`),
+    myTasks: () => req<Task[]>('GET', '/tasks'),
+    addTask: (channelId: string, p: { title: string; assigneeId?: string | null; due?: string | null }) =>
+      req<Task>('POST', `/channels/${channelId}/tasks`, p),
+    updateTask: (id: string, p: { title?: string; assigneeId?: string | null; due?: string | null; status?: 'open' | 'done' }) =>
+      req<Task>('PATCH', `/tasks/${id}`, p),
+    deleteTask: (id: string) => req<{ ok: true }>('DELETE', `/tasks/${id}`),
     agentToken: (agentKind: string) => req<{ token: string }>('POST', '/agent-tokens', { agentKind }),
 
     channels: () => req<Channel[]>('GET', '/channels'),

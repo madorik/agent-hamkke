@@ -104,14 +104,18 @@ jobs:
           fi
           echo "Apple submission $id"
           echo "$id" > notary-mac-${{ matrix.arch }}.txt
+      # 자동 업데이트(electron-updater)는 zip 과 latest-mac.yml 을 쓴다. 아키텍처별 yml 은 update-info 가 하나로 합친다.
       - name: Upload to the draft
         working-directory: apps/desktop/release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          cp latest-mac.yml latest-mac-${{ matrix.arch }}.yml
           gh release upload "$TAG" --clobber \
             Agent-Hamkke-mac-${{ matrix.arch }}.dmg \
             Agent-Hamkke-mac-${{ matrix.arch }}.zip \
+            Agent-Hamkke-mac-${{ matrix.arch }}.zip.blockmap \
+            latest-mac-${{ matrix.arch }}.yml \
             notary-mac-${{ matrix.arch }}.txt
 
   windows:
@@ -135,11 +139,33 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$TAG" --clobber apps/desktop/release/Agent-Hamkke-win-x64.exe
+        run: |
+          cd apps/desktop/release
+          gh release upload "$TAG" --clobber Agent-Hamkke-win-x64.exe Agent-Hamkke-win-x64.exe.blockmap latest.yml
+
+  # 설치한 앱이 새 버전을 찾는 macOS 업데이트 정보: arm64·x64 의 latest-mac.yml 을 하나로 합친다
+  update-info:
+    needs: [mac, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+      - name: Merge latest-mac.yml
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          cd "$RUNNER_TEMP"
+          gh release download "$TAG" --pattern 'latest-mac-*.yml' --clobber
+          node "$GITHUB_WORKSPACE/.github/scripts/merge-mac-update.mjs" latest-mac-arm64.yml latest-mac-x64.yml latest-mac.yml
+          gh release upload "$TAG" --clobber latest-mac.yml
+          gh release delete-asset "$TAG" latest-mac-arm64.yml --yes
+          gh release delete-asset "$TAG" latest-mac-x64.yml --yes
 
   # Apple 이 끝냈으면 바로 공개하고, 아직이면 finish-release.yml 의 30분 주기 확인이 이어받는다.
   finish:
-    needs: [mac, windows]
+    needs: [update-info]
     uses: ./.github/workflows/finish-release.yml
     with:
       tag: ${{ inputs.tag || github.ref_name }}

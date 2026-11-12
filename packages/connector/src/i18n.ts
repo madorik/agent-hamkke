@@ -53,6 +53,17 @@ const ko = {
     `[마스터가 결정함에서 정했어요]\n질문: ${question}\n결정: ${answer}${requester ? `\n기다리던 사람: ${requester}` : ''}${context ? `\n맥락: ${context}` : ''}\n(이 결정대로 이어서 처리한다)`,
   decisionRecorded: (id: string) => `결정함에 남겼어요(decision_id=${id}). 마스터가 정하면 kind="decision" 으로 알려 줘요.`,
   decisionClosed: '결정 요청을 닫았어요.',
+  requestArrivedAll: (from: string, master: string, body: string) =>
+    `[${from}가 채널 모두(@모두)에게 한 요청 · 마스터(${master})도 포함]\n${body}\n(마스터 몫의 답만 한다. 다른 사람 몫은 그 사람의 에이전트가 답한다)`,
+  taskAssigned: (title: string, due: string | null, id: string, by: string) =>
+    `[마스터에게 할 일이 생겼어요 · ${by}가 맡김 · task_id=${id}]\n${title}${due ? ` (기한 ${due})` : ''}\n(마스터가 시키면 처리한다. 지금 따로 할 일은 없다)`,
+  taskLine: (done: boolean, title: string, who: string | null, due: string | null, id: string) =>
+    `- [${done ? 'x' : ' '}] ${title}${who ? ` · ${who}` : ''}${due ? ` · ~${due}` : ''} (task_id=${id})`,
+  tasksBlock: (lines: string) => `할 일:\n${lines}`,
+  taskAdded: (line: string) => `할 일을 등록했어요:\n${line}`,
+  taskDone: (title: string) => `완료로 표시했어요: ${title}`,
+  noTasks: '남은 할 일이 없어요.',
+  unknownAssignee: (name: string, members: string) => `'${name}'은(는) 이 채널에 없어요. 참여자: ${members}`,
 
   // ── MCP 지시문 ──
   instructions: `너는 "Agent Hamkke"에 연결된 마스터의 업무 에이전트다. 다른 사람들과 그들의 에이전트가 있는 채널에서 마스터를 대신해 일을 논의하고 문서를 함께 다듬는다.
@@ -65,10 +76,11 @@ const ko = {
 - kind="approval": 네가 올린 초안을 마스터가 승인·수정·폐기했다는 알림. 수정됐다면 마스터의 문장이 기준이다.
 - kind="system": 단계 변경·입장 같은 알림. 답할 필요 없다.
 - kind="decision": 마스터가 결정함에서 정한 답. 그 결정대로 이어서 처리한다(마스터의 도구에 반영할 일, 요청한 사람에게 필요한 후속 답 등). 마스터가 결정을 채널에 직접 알렸을 수 있으니 read_channel 로 보고, 이미 알렸으면 같은 말을 다시 보내지 않는다.
+- kind="task": 다른 사람이 마스터에게 할 일을 맡겼다는 알림. 마스터가 시키기 전엔 따로 처리하지 않는다. 회의록·요청에서 누가 언제까지 할 일이 나오면 add_task 로 등록하고, 마스터가 맡은 일을 끝내면 complete_task 로 표시한다.
 
 결정 요청: 마스터만 정할 수 있는 일(일정·가격·계약·책임·예산·인사·우선순위 같은 약속이나 판단)은 짐작해서 답하지 말고 request_decision 으로 남긴다. 질문은 한 문장으로, 고를 수 있는 답이 보이면 options 로 2~4개, 판단에 필요한 사실은 context 에 짧게, 요청 메시지에서 생긴 거면 message_id 를 같이 준다. 남긴 뒤 요청한 사람에게는 "확인이 필요해 마스터 결정을 받아 알려 드릴게요"처럼 짧게 답한다. 이벤트에 master_away="true" 가 있으면 마스터가 자리를 비운 것이니 마스터 판단이 필요한 건 모두 이렇게 남긴다. 이벤트에 decision_id 가 있으면 꺼져 있는 동안 서버가 결정함에 남겨 둔 요청이다. 네가 직접 답할 수 있으면 답하고 close_decision 으로 닫고, 마스터 판단이 필요하면 같은 message_id 로 request_decision 을 불러 질문·선택지를 다듬는다.
 
-도구: 채널 답장은 send_message, 문서 초안·수정본은 propose_document, 마스터에게 보고·질문은 report_to_master, 마스터의 결정이 필요한 일은 request_decision, 맥락이 필요하면 read_channel / read_document. 내 PC 의 파일을 올릴 땐 share_file, 채널에 올라온 파일을 볼 땐 download_file 로 받아 Read 로 연다.
+도구: 채널 답장은 send_message, 문서 초안·수정본은 propose_document, 마스터에게 보고·질문은 report_to_master, 마스터의 결정이 필요한 일은 request_decision, 할 일(누가 언제까지)은 add_task·complete_task·list_tasks, 맥락이 필요하면 read_channel / read_document. 내 PC 의 파일을 올릴 땐 share_file, 채널에 올라온 파일을 볼 땐 download_file 로 받아 Read 로 연다.
 규칙:
 - 채널 단계(요청→초안→검토→확정)에 맞춰 움직인다. 할 말은 모아서 한 번에, 짧고 구체적으로. 맞장구·인사만 하는 메시지는 보내지 않는다.
 - 일정·가격·계약·책임 같은 약속은 하지 말고 마스터에게 먼저 묻는다.
@@ -106,6 +118,14 @@ const ko = {
     request_decision_message: '이 결정이 생긴 메시지 id(@요청 등). 같은 id 로 다시 부르면 고친다',
     close_decision: '결정함의 요청을 네가 처리해 닫는다(예: 직접 답할 수 있었음).',
     close_decision_note: '무엇을 했는지 한 줄',
+    add_task: '채널에 할 일을 등록한다(맡은 사람·기한). 회의록·요청에서 나온 할 일, 누가 언제까지 하기로 한 일을 남긴다.',
+    add_task_title: '할 일 한 줄(무엇을)',
+    add_task_assignee: '맡은 사람 이름(채널 참여자). 마스터면 "master". 비우면 아직 안 정함',
+    add_task_due: '기한 YYYY-MM-DD(없으면 비움)',
+    add_task_message: '이 일이 생긴 메시지 id(@요청 등)',
+    complete_task: '할 일을 완료로 표시한다(마스터가 맡았거나 네가 만든 일).',
+    list_tasks: '할 일 목록을 본다. channel_id 를 주면 그 채널의 남은·최근 끝낸 일, 안 주면 마스터가 맡은 남은 일(모든 채널).',
+    list_tasks_channel: '채널 id(없으면 마스터의 할 일 전체)',
   },
 
   // ── 도구 결과 ──
@@ -156,7 +176,7 @@ const ko = {
 - 도구 실행 권한은 마스터가 데스크톱에서 허락한다. 거절되면 같은 걸 다시 시도하지 말고, 왜 필요했는지 답에 적는다.`,
   runnerPromptCodex: (server: string) => `너는 데스크톱 앱 "Agent Hamkke"가 직접 돌리는 세션이다. 사람은 이 대화창을 보지 않는다.
 - 사용자 턴의 <channel source="agent-hamkke" ...> 블록 하나하나가 메신저에서 온 이벤트다. 블록 밖의 문장은 앱이 덧붙인 안내다.
-- 메신저 도구(send_message, propose_document, report_to_master, request_decision, close_decision, share_file, download_file, read_channel, read_document, list_channels)는 MCP 서버 "${server}"에 있다. 다른 이름의 agent-hamkke 도구는 쓰지 않는다.
+- 메신저 도구(send_message, propose_document, report_to_master, request_decision, close_decision, add_task, complete_task, list_tasks, share_file, download_file, read_channel, read_document, list_channels)는 MCP 서버 "${server}"에 있다. 다른 이름의 agent-hamkke 도구는 쓰지 않는다.
 - 마스터가 너에게만 보낸 지시(kind="master")는 결과를 마지막 답 문장으로 써라. 앱이 그 문장을 마스터에게만 보이는 메시지로 올린다(마크다운 가능). 이때 report_to_master 를 따로 부르지 않는다.
 - 그 밖의 경우 네 일반 답 문장은 아무에게도 전달되지 않는다. 채널에 할 말은 send_message·propose_document, 상대 이벤트를 처리하다 마스터에게 묻거나 알릴 말은 report_to_master 로 한다.
 - 마스터가 내 PC 의 파일을 올리라고 하면 share_file 로 올린다(마스터에게만 보일 땐 to_master=true). 채널에 올라온 파일은 download_file 로 받은 뒤 그 파일을 읽는다.
@@ -177,6 +197,9 @@ const ko = {
     read_document: '문서 읽는 중',
     list_channels: '채널 살펴보는 중',
     request_decision: '결정 요청 남기는 중',
+    add_task: '할 일 등록하는 중',
+    complete_task: '할 일 끝내는 중',
+    list_tasks: '할 일 보는 중',
     close_decision: '결정 요청 닫는 중',
   } as Record<string, string>,
   ownToolOther: '메신저 보는 중',
@@ -262,6 +285,16 @@ const en: Messages = {
     `[Your master decided this in their decision inbox]\nQuestion: ${question}\nDecision: ${answer}${requester ? `\nWaiting: ${requester}` : ''}${context ? `\nContext: ${context}` : ''}\n(carry on based on this decision)`,
   decisionRecorded: (id) => `Recorded in your master's decision inbox (decision_id=${id}). When they decide, you'll get it as kind="decision".`,
   decisionClosed: 'Closed the decision request.',
+  requestArrivedAll: (from, master, body) =>
+    `[${from} asked everyone in the channel (@all), including your master (${master})]\n${body}\n(answer only your master's part; each other person's agent answers theirs)`,
+  taskAssigned: (title, due, id, by) =>
+    `[A task was assigned to your master · by ${by} · task_id=${id}]\n${title}${due ? ` (due ${due})` : ''}\n(do it when your master asks; nothing to do right now)`,
+  taskLine: (done, title, who, due, id) => `- [${done ? 'x' : ' '}] ${title}${who ? ` · ${who}` : ''}${due ? ` · by ${due}` : ''} (task_id=${id})`,
+  tasksBlock: (lines) => `Tasks:\n${lines}`,
+  taskAdded: (line) => `Added the task:\n${line}`,
+  taskDone: (title) => `Marked done: ${title}`,
+  noTasks: 'No open tasks.',
+  unknownAssignee: (name, members) => `'${name}' isn't in this channel. Members: ${members}`,
 
   instructions: `You are your master's work agent, connected to "Agent Hamkke". In channels with other people and their agents, you discuss work on your master's behalf and refine documents together.
 
@@ -273,10 +306,11 @@ Events arrive as <channel source="agent-hamkke" channel_id="..." kind="..." from
 - kind="approval": a notice that your master approved, edited, or discarded a draft you posted. If it was edited, your master's wording is what counts.
 - kind="system": notices such as stage changes or someone joining. No reply needed.
 - kind="decision": an answer your master chose in their decision inbox. Carry on based on it (apply it in your master's tools, send any follow-up the requester needs). Your master may already have announced the decision in the channel, so check with read_channel and don't repeat it.
+- kind="task": a notice that someone assigned your master a task. Don't act on it until your master asks. When minutes or requests produce to-dos (who does what by when), record them with add_task, and mark your master's tasks done with complete_task when finished.
 
 Decision requests: things only your master can decide (commitments or calls about schedule, price, contracts, responsibility, budget, HR or priorities) — don't guess; record them with request_decision. Write the question as one sentence, give 2–4 options when the choices are clear, put the facts needed to decide briefly in context, and pass message_id when it came from a request message. Then reply briefly to the requester, e.g. "This needs my master's decision; I'll get back to you." If the event has master_away="true", your master is away, so record everything that needs their judgment this way. If the event has decision_id, the relay recorded this request in the decision inbox while you were offline. If you can answer it yourself, answer and close it with close_decision; if it needs your master, call request_decision with the same message_id to refine the question and options.
 
-Tools: reply in a channel with send_message, post document drafts and revisions with propose_document, report to or ask your master with report_to_master, record what needs your master's decision with request_decision, and use read_channel / read_document when you need context. To upload a file from this computer use share_file; to view a file posted in a channel, fetch it with download_file and open it with Read.
+Tools: reply in a channel with send_message, post document drafts and revisions with propose_document, report to or ask your master with report_to_master, record what needs your master's decision with request_decision, track to-dos (who does what by when) with add_task, complete_task and list_tasks, and use read_channel / read_document when you need context. To upload a file from this computer use share_file; to view a file posted in a channel, fetch it with download_file and open it with Read.
 Rules:
 - Work according to the channel stage (Request → Draft → Review → Final). Gather what you have to say and send it at once, short and specific. Don't send messages that only agree or greet.
 - Don't commit to schedules, prices, contracts, or responsibilities — ask your master first.
@@ -313,6 +347,14 @@ Rules:
     request_decision_message: 'The message this came from (an @request, etc.). Calling again with the same id updates it',
     close_decision: 'Close a decision request yourself because you handled it (e.g. you could answer it directly).',
     close_decision_note: 'One line on what you did',
+    add_task: 'Add a task to the channel (owner, due date). Record to-dos from minutes or requests: who will do what by when.',
+    add_task_title: 'One line: what to do',
+    add_task_assignee: 'Owner name (a channel member). "master" for your master. Leave out if not decided',
+    add_task_due: 'Due date YYYY-MM-DD (leave out if none)',
+    add_task_message: 'The message it came from (an @request, etc.)',
+    complete_task: 'Mark a task done (one your master owns or you created).',
+    list_tasks: "List tasks. With channel_id: that channel's open and recently done tasks. Without: your master's open tasks in all channels.",
+    list_tasks_channel: "Channel id (leave out for all your master's tasks)",
   },
 
   noChannels: 'You are not in any channels.',
@@ -359,7 +401,7 @@ Rules:
 - Your master grants tool permissions from the desktop app. If a request is denied, don't retry the same thing; explain in your answer why you needed it.`,
   runnerPromptCodex: (server) => `You are a session run directly by the desktop app "Agent Hamkke". No person reads this conversation.
 - Each <channel source="agent-hamkke" ...> block in a user turn is an event from the messenger. Text outside the blocks is guidance added by the app.
-- The messenger tools (send_message, propose_document, report_to_master, request_decision, close_decision, share_file, download_file, read_channel, read_document, list_channels) are on the MCP server "${server}". Don't use agent-hamkke tools under any other name.
+- The messenger tools (send_message, propose_document, report_to_master, request_decision, close_decision, add_task, complete_task, list_tasks, share_file, download_file, read_channel, read_document, list_channels) are on the MCP server "${server}". Don't use agent-hamkke tools under any other name.
 - When your master sends instructions only to you (kind="master"), write the result as your final answer text. The app posts that text to the chat as a message only your master can see (Markdown OK). Don't also call report_to_master in that case.
 - Otherwise your plain-text answers reach no one. Use send_message / propose_document for what you want to say in a channel, and report_to_master to ask or tell your master something while handling other people's events.
 - If your master asks you to upload a file from this computer, use share_file (to_master=true if only your master should see it). To view a file posted in a channel, fetch it with download_file, then read the saved file.
@@ -380,6 +422,9 @@ Rules:
     read_document: 'Reading a document',
     list_channels: 'Looking through channels',
     request_decision: 'Recording a decision request',
+    add_task: 'Adding a task',
+    complete_task: 'Completing a task',
+    list_tasks: 'Checking tasks',
     close_decision: 'Closing a decision request',
   },
   ownToolOther: 'Checking the messenger',

@@ -3,6 +3,7 @@ import { useLocale } from './lib/i18n'
 import { boot, goHome, setModal, toggleSidebar, useStore } from './lib/store'
 import { ChannelView } from './components/ChannelView'
 import { DecisionsPage } from './components/Decisions'
+import { MyTasksPage } from './components/Tasks'
 import { Modals } from './components/Modals'
 import { Approvals, Home, Onboarding } from './components/Pages'
 import { Sidebar } from './components/Sidebar'
@@ -50,6 +51,7 @@ export function App() {
         {view.kind === 'channel' && <ChannelView key={view.id} id={view.id} />}
         {view.kind === 'approvals' && <Approvals />}
         {view.kind === 'decisions' && <DecisionsPage />}
+        {view.kind === 'tasks' && <MyTasksPage />}
       </main>
       <Modals />
       {toast && (

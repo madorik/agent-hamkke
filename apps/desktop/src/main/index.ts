@@ -5,6 +5,7 @@ import { homedir } from 'node:os'
 import { delimiter, dirname, join, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 import { isRecording, registerMeeting } from './meeting'
+import { registerUpdater } from './updater'
 
 // 이름이 Agent Messenger 였을 때의 데이터(로그인·설정, 커넥터 설정)를 새 이름 폴더로 한 번 옮긴다
 function moveLegacy(from: string, to: string) {
@@ -147,6 +148,7 @@ function runnerScript(): string {
 const profileDir = () => join(homedir(), '.agent-hamkke', PROFILE)
 const connectorConfigPath = () => join(profileDir(), 'connector.json')
 registerMeeting(() => win, profileDir)
+registerUpdater(() => win, () => stopRunner())
 const runnerLogPath = () => join(profileDir(), 'runner.log')
 
 interface ConnectorFile {

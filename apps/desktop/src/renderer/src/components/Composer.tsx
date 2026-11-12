@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type MutableRefObject, type ReactNode } from 'react'
-import { ArrowUp, Check, ChevronDown, FileText, Loader, Lock, Paperclip, Plus } from 'lucide-react'
+import { ArrowUp, Check, ChevronDown, FileText, Loader, Lock, Paperclip, Plus, Users } from 'lucide-react'
 import { t } from '../lib/i18n'
 import { isPinnedModel, modelName, modelNote } from '../lib/store'
 import { Avatar, MenuItem, Popover, cx, useAutosize } from './ui'
@@ -54,9 +54,15 @@ export function Composer({
   // 커서 바로 앞이 '@글자' 면 사람 고르기 목록을 띄운다
   const [mention, setMention] = useState<{ start: number; query: string } | null>(null)
   const [sel, setSel] = useState(0)
+  // 맨 위에 '모두'(채널의 모든 사람 · 각자의 에이전트가 답한다). 두 명 이상일 때만
+  const everyone: Mentionable = { id: '*', name: t('mention.everyone'), color: 'var(--fg-3)' }
+  const q = mention?.query.toLowerCase() ?? ''
   const matches =
     mention && mentionables && !toAgent
-      ? mentionables.filter((x) => x.name.toLowerCase().includes(mention.query.toLowerCase())).slice(0, 6)
+      ? [
+          ...(mentionables.length > 1 && ['모두', 'all', 'everyone', everyone.name].some((w) => w.toLowerCase().startsWith(q)) ? [everyone] : []),
+          ...mentionables.filter((x) => x.name.toLowerCase().includes(q)),
+        ].slice(0, 7)
       : []
   const findMention = (value: string, caret: number) => {
     const m = /(^|\s)@([^\s@]{0,30})$/.exec(value.slice(0, caret))
@@ -129,8 +135,17 @@ export function Composer({
               onMouseDown={(e) => (e.preventDefault(), pickMention(x))}
               className={cx('flex w-full items-center gap-2.5 rounded-xl px-2.5 py-1.5 text-left text-[14px]', i === sel && 'bg-hover')}
             >
-              <Avatar name={x.name} color={x.color} size={22} />
-              <span className="min-w-0 flex-1 truncate">{x.name}</span>
+              {x.id === '*' ? (
+                <span className="inline-flex size-[22px] shrink-0 items-center justify-center rounded-full bg-sidebar text-fg-2">
+                  <Users size={13} />
+                </span>
+              ) : (
+                <Avatar name={x.name} color={x.color} size={22} />
+              )}
+              <span className="min-w-0 flex-1 truncate">
+                {x.name}
+                {x.id === '*' && <span className="ml-1.5 text-[12px] text-fg-3">{t('mention.everyoneHint')}</span>}
+              </span>
               {/* 자리 비운 사람: 그 사람의 에이전트가 받거나 결정함에 남는다 */}
               {x.awaySince && <span className="shrink-0 text-[12px] text-amber">{t('away.title')}</span>}
             </button>

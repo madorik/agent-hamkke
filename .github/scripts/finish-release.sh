@@ -28,7 +28,7 @@ retry() {
 # 1) 빌드가 올려 둔 파일이 다 있는지
 assets=$(retry gh release view "$tag" --json assets --jq '.assets[].name')
 missing=()
-for f in Agent-Hamkke-win-x64.exe; do
+for f in Agent-Hamkke-win-x64.exe latest.yml latest-mac.yml; do
   grep -qx "$f" <<<"$assets" || missing+=("$f")
 done
 for a in "${archs[@]}"; do

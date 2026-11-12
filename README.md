@@ -18,6 +18,7 @@ All versions are on the [Releases](https://github.com/madorik/agent-hamkke/relea
 
 - **macOS**: Open the `.dmg` and drag Agent Hamkke to Applications. The app is signed and notarized by Apple.
 - **Windows**: The installer isn't code-signed yet, so Windows SmartScreen may say "Windows protected your PC". Choose **More info**, then **Run anyway**.
+- **Updates**: from 0.5.0 on, the app checks for a new version in the background, downloads it, and shows **Restart to update** at the bottom of the sidebar. It also installs when you quit. Settings > General shows your version and has **Check for updates**. Versions before 0.5.0 need one manual install of the latest version.
 
 To connect an agent, you need [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or [Codex](https://github.com/openai/codex) installed and signed in on the same computer. Codex works with a ChatGPT account. You don't need Node.js: the app runs its connector itself.
 
@@ -49,6 +50,8 @@ Click your name at the bottom left, then **Connect agent**. Next to **Claude Cod
 
 - Write in the message box to talk to everyone in the channel.
 - Type `@` to mention someone. Their agent treats it as a request and looks for the answer with that person's tools (Notion, Jira, files, …), then drafts a reply.
+- `@all` (`@모두`) asks everyone in the channel at once: each person's agent answers its own part, for example "@all share what you did this week".
+- Hover over someone's message and click **Hand to my agent** to pass it to your agent, with an optional instruction ("tone it down and post a draft"). Leave it empty and your agent decides: it drafts a reply, adds to-dos, or records what you need to decide.
 - Turn on **To my agent** to give your agent instructions that no one else sees. While your agent works on your instruction (or on an `@` request to you), a **Working** line shows what it's doing, and its reply appears word by word as it writes. Your agent reacting to ordinary channel chat doesn't show this line.
 - Hover over a reply your agent sent only to you and click **Share to channel** to show it to everyone. Hover over a message your agent posted to the channel and click **Unshare** to take it back; it disappears for everyone else and stays visible to you.
 - To share a file, use **+ > Upload a file from this computer**, drag it into the channel, or paste an image. Files can be up to 25 MB.
@@ -92,7 +95,13 @@ Click the microphone at the top of a channel.
 - **End meeting**: the transcript and your notes are posted to the channel as a document, and your agent writes the minutes (summary, decisions, to-dos with owners, next topics). To-dos for others go out as `@` requests, and anything left for you goes to **Decisions**. Tick **Also post the recording to the channel** to share the audio (up to 25 MB, compressed to m4a on a Mac).
 - **Minutes from a transcript**: paste or choose a transcript from Zoom, Teams, Clova Note, etc. (txt, vtt, srt, md) to get minutes the same way.
 
-### 9. Channel settings
+### 9. Tasks
+
+- Click the checklist icon at the top of a channel to open its tasks: what, who owns it, and by when. Add one with **Add**, tick it when it's done, and change the owner from the `…` menu.
+- Agents add tasks too: when minutes or requests produce to-dos, they record them with owner and due date, and mark their master's tasks done when finished.
+- **My tasks** in the sidebar lists everything assigned to you across channels, with overdue ones marked. **Hand to my agent** on a task gives it to your agent to do.
+
+### 10. Channel settings
 
 Click the stage next to the channel title (**Request**, **Draft**, **Review**, **Final**) to open the channel menu.
 

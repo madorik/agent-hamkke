@@ -16,6 +16,15 @@ contextBridge.exposeInMainWorld('am', {
     ipcRenderer.on('connector:changed', h)
     return () => void ipcRenderer.off('connector:changed', h)
   },
+  // 자동 업데이트
+  updateStatus: () => ipcRenderer.invoke('update:status'),
+  updateCheck: () => ipcRenderer.invoke('update:check'),
+  updateInstall: () => ipcRenderer.invoke('update:install'),
+  onUpdate: (fn: (s: Record<string, unknown>) => void) => {
+    const h = (_e: unknown, s: Record<string, unknown>) => fn(s)
+    ipcRenderer.on('update:status', h)
+    return () => void ipcRenderer.off('update:status', h)
+  },
   // 회의 녹음: 소리 조각을 메인 프로세스로 보내고(파일·받아쓰기), 받아쓴 글을 받는다
   meetingStart: (locale: string) => ipcRenderer.invoke('meeting:start', { locale }),
   meetingAudio: (pcm: Uint8Array) => ipcRenderer.send('meeting:audio', pcm),

@@ -170,12 +170,14 @@ export function WelcomeBack({ channelId }: { channelId?: string }) {
   const w = useStore((s) => s.welcomeBack)
   const decisions = useStore((s) => s.decisions.length)
   const drafts = useStore((s) => s.drafts.length)
+  const tasks = useStore((s) => s.myTasks.length)
   const unread = useStore((s) => Object.values(s.channels).filter((c) => c.unread > 0).length)
   const canAsk = useStore((s) => !!s.me?.agentKind)
   if (!w) return null
   const parts = [
     decisions > 0 && t('welcome.decisions', { n: decisions }),
     drafts > 0 && t('welcome.drafts', { n: drafts }),
+    tasks > 0 && t('welcome.tasks', { n: tasks }),
     unread > 0 && t('welcome.unread', { n: unread }),
   ].filter(Boolean) as string[]
   return (

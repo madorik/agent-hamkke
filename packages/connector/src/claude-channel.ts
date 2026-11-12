@@ -12,7 +12,7 @@ import { z } from 'zod'
 import { mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, extname, join, resolve } from 'node:path'
-import type { Artifact, Channel, Decision, Message } from '@ah/protocol'
+import type { Artifact, Channel, Decision, Message, Task } from '@ah/protocol'
 import { loadConfig, profile, profileDir } from './config.ts'
 import { connectRelay, createApi, createFileApi, log } from './relay.ts'
 import { createInbox, describeFile, fmtSize, fmtTime, STAGE } from './inbox.ts'
@@ -155,6 +155,38 @@ const TOOLS = [
     },
   },
   {
+    name: 'add_task',
+    description: M.tool.add_task,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        channel_id: { type: 'string' },
+        title: { type: 'string', description: M.tool.add_task_title },
+        assignee: { type: 'string', description: M.tool.add_task_assignee },
+        due: { type: 'string', description: M.tool.add_task_due },
+        message_id: { type: 'string', description: M.tool.add_task_message },
+      },
+      required: ['channel_id', 'title'],
+    },
+  },
+  {
+    name: 'complete_task',
+    description: M.tool.complete_task,
+    inputSchema: {
+      type: 'object',
+      properties: { task_id: { type: 'string' } },
+      required: ['task_id'],
+    },
+  },
+  {
+    name: 'list_tasks',
+    description: M.tool.list_tasks,
+    inputSchema: {
+      type: 'object',
+      properties: { channel_id: { type: 'string', description: M.tool.list_tasks_channel } },
+    },
+  },
+  {
     name: 'close_decision',
     description: M.tool.close_decision,
     inputSchema: {
@@ -187,6 +219,30 @@ const Args = {
     message_id: z.string().optional(),
   }),
   close_decision: z.object({ decision_id: z.string().min(1), note: z.string().min(1) }),
+  add_task: z.object({
+    channel_id: z.string(),
+    title: z.string().min(1),
+    assignee: z.string().optional(),
+    due: z.string().optional(),
+    message_id: z.string().optional(),
+  }),
+  complete_task: z.object({ task_id: z.string().min(1) }),
+  list_tasks: z.object({ channel_id: z.string().optional() }),
+}
+
+/** 할 일 한 줄: - [ ] 제목 · 맡은 사람 · ~기한 (task_id=…) */
+function taskLine(t: Task, channel: Channel | undefined, meId: string): string {
+  const who = t.assigneeId ? (t.assigneeId === meId ? M.masterSuffix.replace(/[()]/g, '') : channel?.members.find((m) => m.id === t.assigneeId)?.name) : null
+  return M.taskLine(t.status === 'done', t.title, who ?? null, t.due, t.id)
+}
+
+/** '정민균' · '@정민균' · 'master' → 채널 참여자 id */
+function findAssignee(c: Channel, raw: string, meId: string): string {
+  const name = raw.trim().replace(/^@/, '')
+  if (/^(master|me|마스터|나)$/i.test(name)) return meId
+  const hit = c.members.find((m) => m.name === name) ?? c.members.find((m) => m.name.replace(/\s/g, '') === name.replace(/\s/g, ''))
+  if (!hit) throw new Error(M.unknownAssignee(name, c.members.map((m) => m.name).join(', ')))
+  return hit.id
 }
 
 // ── 파일 ───────────────────────────────────────────────────────
@@ -252,6 +308,8 @@ async function runTool(name: string, raw: unknown): Promise<string> {
       channels.set(c.id, c)
       const msgs = await api<Message[]>('GET', `/channels/${a.channel_id}/messages`)
       const docs = await api<Artifact[]>('GET', `/channels/${a.channel_id}/artifacts`)
+      // 예전 중계 서버엔 할 일이 없다
+      const tasks = (await api<Task[]>('GET', `/channels/${a.channel_id}/tasks`).catch(() => [] as Task[])).filter((t) => t.status === 'open')
       const lines = msgs.slice(-(a.limit ?? 40)).map((m) => {
         const tag = m.status === 'pending' ? M.tagPending : m.visibility === 'private' ? M.tagPrivate : ''
         const body =
@@ -267,6 +325,7 @@ async function runTool(name: string, raw: unknown): Promise<string> {
         M.channelHeader(c.title, STAGE[c.stage], c.turnLimit),
         M.membersLine(c.members.map((m) => m.name).join(', ')),
         docLines.length ? M.docsBlock(docLines.join('\n')) : M.docsNone,
+        ...(tasks.length ? [M.tasksBlock(tasks.map((t) => taskLine(t, c, me.id)).join('\n'))] : []),
         '',
         ...lines,
       ].join('\n')
@@ -352,6 +411,30 @@ async function runTool(name: string, raw: unknown): Promise<string> {
         messageId: a.message_id,
       })
       return M.decisionRecorded(d.id)
+    }
+    case 'add_task': {
+      const a = Args.add_task.parse(raw)
+      const c = await api<Channel>('GET', `/channels/${a.channel_id}`)
+      channels.set(c.id, c)
+      const t = await api<Task>('POST', `/channels/${a.channel_id}/tasks`, {
+        title: a.title,
+        assigneeId: a.assignee ? findAssignee(c, a.assignee, me.id) : undefined,
+        due: a.due,
+        messageId: a.message_id,
+      })
+      return M.taskAdded(taskLine(t, c, me.id))
+    }
+    case 'complete_task': {
+      const a = Args.complete_task.parse(raw)
+      const t = await api<Task>('PATCH', `/tasks/${a.task_id}`, { status: 'done' })
+      return M.taskDone(t.title)
+    }
+    case 'list_tasks': {
+      const a = Args.list_tasks.parse(raw)
+      const list = await api<Task[]>('GET', a.channel_id ? `/channels/${a.channel_id}/tasks` : '/tasks')
+      if (!list.length) return M.noTasks
+      if (!channels.size) await inbox.refreshChannels()
+      return list.map((t) => `${a.channel_id ? '' : `[${channels.get(t.channelId)?.title ?? ''}] `}${taskLine(t, channels.get(t.channelId), me.id)}`).join('\n')
     }
     case 'close_decision': {
       const a = Args.close_decision.parse(raw)

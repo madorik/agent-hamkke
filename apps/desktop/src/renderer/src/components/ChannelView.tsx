@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ChevronDown, FileText, Lock, Minus, Paperclip, Pencil, Plus, UserPlus, Zap } from 'lucide-react'
+import { ChevronDown, FileText, ListTodo, Lock, Minus, Paperclip, Pencil, Plus, UserPlus, Zap } from 'lucide-react'
 import type { Channel, Stage } from '@ah/protocol'
 import { stageLabel, t } from '../lib/i18n'
 import { api, guard, sendMessage, setAgentModel, setAutoApprove, setCanvas, setModal, uploadFiles, useStore } from '../lib/store'
@@ -8,6 +8,7 @@ import { Canvas } from './Canvas'
 import { Composer, type Visibility } from './Composer'
 import { AwayLine, WelcomeBack } from './Decisions'
 import { MeetingBar, MeetingButton } from './Meeting'
+import { TasksPanel } from './Tasks'
 import { MessageRow } from './Message'
 import { TopBar } from './TopBar'
 import { AgentAvatar, Avatar, Button, IconButton, Markdown, MenuItem, Popover, Toggle, agentLabel, cx } from './ui'
@@ -21,6 +22,7 @@ export function ChannelView({ id }: { id: string }) {
   const me = useStore((s) => s.me)
   const agentStatus = useStore((s) => s.agentStatus)
   const docCount = useStore((s) => Object.values(s.artifacts).filter((a) => a.channelId === id).length)
+  const openTasks = useStore((s) => (s.tasks[id] ?? []).filter((x) => x.status === 'open').length)
   const scroller = useRef<HTMLDivElement>(null)
   const atBottom = useRef(true)
   const visibility = useRef<Visibility>('channel')
@@ -99,7 +101,25 @@ export function ChannelView({ id }: { id: string }) {
                 <UserPlus size={17} />
                 {t('channel.invite')}
               </Button>
-              <IconButton label={t('channel.docs')} active={!!canvas} onClick={() => setCanvas(canvas ? null : { mode: 'list' })}>
+              <IconButton
+                label={t('task.title')}
+                active={canvas?.mode === 'tasks'}
+                onClick={() => setCanvas(canvas?.mode === 'tasks' ? null : { mode: 'tasks' })}
+              >
+                <span className="relative">
+                  <ListTodo size={18} />
+                  {openTasks > 0 && (
+                    <span className="absolute -top-1.5 -right-2 min-w-4 rounded-full bg-accent px-1 text-center text-[10px] leading-4 font-semibold text-accent-fg">
+                      {openTasks}
+                    </span>
+                  )}
+                </span>
+              </IconButton>
+              <IconButton
+                label={t('channel.docs')}
+                active={!!canvas && canvas.mode !== 'tasks'}
+                onClick={() => setCanvas(canvas && canvas.mode !== 'tasks' ? null : { mode: 'list' })}
+              >
                 <span className="relative">
                   <FileText size={18} />
                   {docCount > 0 && (
@@ -171,7 +191,7 @@ export function ChannelView({ id }: { id: string }) {
           />
         </div>
       </div>
-      {canvas && <Canvas channel={channel} />}
+      {canvas?.mode === 'tasks' ? <TasksPanel channel={channel} /> : canvas && <Canvas channel={channel} />}
     </div>
   )
 }

@@ -1,13 +1,16 @@
 // 중계 서버 이벤트 → 에이전트에게 넘길 <channel> 알림.
 // channels 를 받는 Claude Code 세션(커넥터의 push)과 앱이 직접 돌리는 세션(러너) 이 같은 모양을 받도록 한 곳에 둔다.
-import type { Artifact, Channel, Decision, Message, ServerEvent, User } from '@ah/protocol'
+import type { Artifact, Channel, Decision, Message, ServerEvent, Task, User } from '@ah/protocol'
 import { log, type Api } from './relay.ts'
 import { intlLocale, M } from './i18n.ts'
 
 export const STAGE: Record<string, string> = M.stage
 
-/** decision: 마스터가 결정함에서 정한 답(에이전트가 이어서 처리한다) */
-export type ChannelKind = 'master' | 'master_in_channel' | 'peer' | 'request' | 'approval' | 'system' | 'decision'
+/** decision: 마스터가 결정함에서 정한 답(에이전트가 이어서 처리한다) · task: 마스터가 맡은 할 일이 생김(알림) */
+export type ChannelKind = 'master' | 'master_in_channel' | 'peer' | 'request' | 'approval' | 'system' | 'decision' | 'task'
+
+/** @모두 · @all · @everyone (중계 서버와 같은 규칙) */
+export const EVERYONE = /(^|[^\p{L}\p{N}_@])@(모두|all|everyone)(?![\p{L}\p{N}_])/iu
 
 export interface Delivery {
   content: string
@@ -94,7 +97,7 @@ export function createInbox(api: Api) {
     if (m.kind === 'file') {
       content = M.fileArrived(describeFile(m), m.body)
     }
-    if (request) content = M.requestArrived(speaker(m), me.name, content)
+    if (request) content = EVERYONE.test(m.body) ? M.requestArrivedAll(speaker(m), me.name, content) : M.requestArrived(speaker(m), me.name, content)
     if (request && missed) content = M.requestMissed(fmtTime(m.createdAt)) + '\n' + content
     return {
       content,
@@ -111,6 +114,19 @@ export function createInbox(api: Api) {
         // 꺼져 있는 동안 서버가 결정함에 남겨 둔 요청
         ...(decisionId ? { decision_id: decisionId } : {}),
       },
+    }
+  }
+
+  /** 남이 마스터에게 할 일을 맡겼다 → 알림(다음 이벤트에 얹어 보낸다. 바로 일하지는 않는다) */
+  function onTask(t: Task): Delivery | null {
+    if (!me || t.assigneeId !== me.id || t.status !== 'open' || t.createdBy === me.id) return null
+    const key = `task:${t.id}:${t.assigneeId}`
+    if (pushed.has(key)) return null
+    pushed.add(key)
+    const c = channels.get(t.channelId)
+    return {
+      content: M.taskAssigned(t.title, t.due, t.id, nameOf(t.channelId, t.createdBy)),
+      meta: { channel_id: t.channelId, channel: c?.title ?? '', kind: 'task', task_id: t.id },
     }
   }
 
@@ -153,6 +169,8 @@ export function createInbox(api: Api) {
         return onMessage(ev.message)
       case 'decision':
         return onDecision(ev.decision)
+      case 'task':
+        return onTask(ev.task)
       default:
         return null
     }

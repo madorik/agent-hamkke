@@ -24,6 +24,16 @@ interface ConnectorStatus {
   activeModel: string
 }
 
+/** 자동 업데이트 상태(설치한 앱만, enabled) */
+interface UpdateStatus {
+  state: 'idle' | 'checking' | 'none' | 'downloading' | 'ready' | 'error'
+  version?: string
+  percent?: number
+  message?: string
+  current?: string
+  enabled?: boolean
+}
+
 interface AmBridge {
   info(): Promise<{ platform: string; profile: string; relayUrl: string }>
   /** 화면 언어를 알려 준다(에이전트도 같은 언어로) */
@@ -39,6 +49,10 @@ interface AmBridge {
   onConnectorChanged(fn: () => void): () => void
   /** 입력이 오래 없거나 화면을 잠갔다(true) / 다시 움직인다(false) */
   onIdle(fn: (idle: boolean) => void): () => void
+  updateStatus(): Promise<UpdateStatus>
+  updateCheck(): Promise<UpdateStatus>
+  updateInstall(): Promise<void>
+  onUpdate(fn: (s: UpdateStatus) => void): () => void
   meetingStart(locale: string): Promise<{ ok: true; live: 'starting' | 'off' } | { ok: false; error: 'busy' | 'mic' }>
   meetingAudio(pcm: Uint8Array): void
   meetingStop(): Promise<{ audio: string; size: number; seconds: number } | null>

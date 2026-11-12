@@ -1,9 +1,9 @@
 import { create } from 'zustand'
-import type { AgentActivity, Artifact, Channel, Decision, Message, PermissionRequest, ServerEvent, User } from '@ah/protocol'
+import type { AgentActivity, Artifact, Channel, Decision, Message, PermissionRequest, ServerEvent, Task, User } from '@ah/protocol'
 import { ApiError, createApi } from './api'
 import { applyLocale, getLocale, intlLocale, t } from './i18n'
 
-export type View = { kind: 'home' } | { kind: 'channel'; id: string } | { kind: 'approvals' } | { kind: 'decisions' }
+export type View = { kind: 'home' } | { kind: 'channel'; id: string } | { kind: 'approvals' } | { kind: 'decisions' } | { kind: 'tasks' }
 export type Modal =
   | null
   | { kind: 'settings'; tab: 'general' | 'agents' | 'account' }
@@ -12,7 +12,7 @@ export type Modal =
   | { kind: 'join' }
   | { kind: 'away' }
   | { kind: 'meetingImport'; channelId: string }
-export type Canvas = null | { mode: 'list' } | { mode: 'new' } | { mode: 'view'; artifactId: string; version: number | null }
+export type Canvas = null | { mode: 'tasks' } | { mode: 'list' } | { mode: 'new' } | { mode: 'view'; artifactId: string; version: number | null }
 export type Theme = 'system' | 'light' | 'dark'
 
 const LS = {
@@ -50,8 +50,14 @@ interface State {
   replies: Record<string, string>
   /** 내가 정해야 할 일(아직 안 정한 결정 요청) */
   decisions: Decision[]
+  /** 채널별 할 일(채널을 열 때 불러온다) */
+  tasks: Record<string, Task[]>
+  /** 내가 맡은 남은 일(모든 채널) */
+  myTasks: Task[]
   /** 방금 자리에서 돌아왔다: 비운 동안을 요약해 보여 준다(닫으면 null) */
   welcomeBack: { since: number; at: number } | null
+  /** 앱 자동 업데이트(설치한 앱만) */
+  update: UpdateStatus | null
   /** 이 PC 에 연결된 에이전트(러너) 상태와 고를 수 있는 모델 — 데스크톱 앱에서만 */
   agentStatus: ConnectorStatus | null
   view: View
@@ -77,6 +83,9 @@ export const useStore = create<State>(() => ({
   replies: {},
   decisions: [],
   welcomeBack: null,
+  update: null,
+  tasks: {},
+  myTasks: [],
   agentStatus: null,
   view: { kind: 'home' },
   modal: null,
@@ -208,6 +217,8 @@ export async function boot() {
     window.am.onConnectorChanged(() => void refreshAgentStatus())
     window.am.onAgentReply?.((r) => setReply(r.channelId, r.text))
     window.am.onIdle?.(onIdle)
+    window.am.onUpdate?.((u) => set({ update: { ...get().update, ...u } }))
+    void window.am.updateStatus?.().then((u) => set({ update: u })).catch(() => {})
   }
   void refreshAgentStatus()
   const info = await window.am?.info().catch(() => null)
@@ -265,23 +276,27 @@ export function logout() {
     replies: {},
     decisions: [],
     welcomeBack: null,
+    tasks: {},
+    myTasks: [],
     view: { kind: 'home' },
     canvas: null,
   })
 }
 
 async function refreshAll() {
-  const [channels, approvals, decisions] = await Promise.all([
+  const [channels, approvals, decisions, myTasks] = await Promise.all([
     api.channels(),
     api.approvals(),
     // 예전 중계 서버엔 결정함이 없다
     api.decisions().catch(() => [] as Decision[]),
+    api.myTasks().catch(() => [] as Task[]),
   ])
   set({
     channels: Object.fromEntries(channels.map((c) => [c.id, c])),
     drafts: approvals.messages,
     permissions: approvals.permissions,
     decisions,
+    myTasks,
   })
   badge()
   const v = get().view
@@ -419,6 +434,25 @@ function onEvent(ev: ServerEvent) {
       if (d.status === 'open' && !had) notify(t('notify.decision'), d.question, () => set({ view: { kind: 'decisions' }, canvas: null }))
       break
     }
+    case 'task': {
+      const task = ev.task
+      const wasMine = s.myTasks.some((x) => x.id === task.id)
+      upsertTask(task)
+      // 남이 나에게 맡겼다
+      const mine = task.assigneeId === s.me?.id && task.status === 'open'
+      if (mine && !wasMine && task.createdBy !== s.me?.id) {
+        notify(t('notify.task'), task.title, () => set({ view: { kind: 'tasks' }, canvas: null }))
+      }
+      break
+    }
+    case 'task_removed': {
+      const list = s.tasks[ev.channelId]
+      set({
+        tasks: list ? { ...s.tasks, [ev.channelId]: list.filter((x) => x.id !== ev.taskId) } : s.tasks,
+        myTasks: s.myTasks.filter((x) => x.id !== ev.taskId),
+      })
+      break
+    }
     case 'channel':
       set({ channels: { ...s.channels, [ev.channel.id]: ev.channel } })
       break
@@ -505,10 +539,11 @@ function notifyMessage(m: Message) {
 // ── 화면 이동 ──────────────────────────────────────────────
 
 export async function loadChannel(id: string) {
-  const [messages, artifacts] = await Promise.all([api.messages(id), api.artifacts(id)])
+  const [messages, artifacts, tasks] = await Promise.all([api.messages(id), api.artifacts(id), api.tasks(id).catch(() => [] as Task[])])
   const s = get()
   set({
     messages: { ...s.messages, [id]: messages },
+    tasks: { ...s.tasks, [id]: tasks },
     artifacts: { ...s.artifacts, ...Object.fromEntries(artifacts.map((a) => [a.id, a])) },
   })
 }
@@ -538,7 +573,7 @@ export async function startChannel(firstMessage: string) {
   const title = firstMessage.split('\n')[0].slice(0, 40)
   const c = await guard(api.createChannel(title))
   if (!c) return
-  set({ channels: { ...get().channels, [c.id]: c }, messages: { ...get().messages, [c.id]: [] } })
+  set({ channels: { ...get().channels, [c.id]: c }, messages: { ...get().messages, [c.id]: [] }, tasks: { ...get().tasks, [c.id]: [] } })
   await openChannel(c.id)
   await guard(api.send(c.id, firstMessage, 'channel'))
   set({ modal: { kind: 'invite', channelId: c.id } })
@@ -663,6 +698,18 @@ function onIdle(idle: boolean) {
   else if (!idle && me.awaySince && autoAway) void setAway(false)
 }
 
+// ── 앱 업데이트 ──────────────────────────────────────────────
+
+export async function checkUpdate() {
+  const u = await window.am?.updateCheck().catch(() => null)
+  if (u) set({ update: u })
+  if (u?.state === 'none') toast(t('update.latest'))
+}
+
+export async function installUpdate() {
+  await window.am?.updateInstall()
+}
+
 export function closeWelcome() {
   set({ welcomeBack: null })
 }
@@ -691,6 +738,78 @@ export async function dismissDecision(id: string) {
   if (!r) return
   set({ decisions: get().decisions.filter((d) => d.id !== id) })
   badge()
+}
+
+// ── 할 일 ───────────────────────────────────────────────────
+
+/** 남은 일 먼저(기한 가까운 순), 끝낸 일은 뒤에 */
+function sortTasks(list: Task[]): Task[] {
+  return [...list].sort((a, b) => {
+    if (a.status !== b.status) return a.status === 'open' ? -1 : 1
+    if (a.status === 'done') return (b.doneAt ?? 0) - (a.doneAt ?? 0)
+    if ((a.due ?? '9') !== (b.due ?? '9')) return (a.due ?? '9') < (b.due ?? '9') ? -1 : 1
+    return a.createdAt - b.createdAt
+  })
+}
+
+function upsertTask(task: Task) {
+  const s = get()
+  const list = s.tasks[task.channelId]
+  const meId = s.me?.id
+  set({
+    tasks: list ? { ...s.tasks, [task.channelId]: sortTasks([...list.filter((x) => x.id !== task.id), task]) } : s.tasks,
+    myTasks: sortTasks([
+      ...s.myTasks.filter((x) => x.id !== task.id),
+      ...(task.assigneeId === meId && task.status === 'open' ? [task] : []),
+    ]),
+  })
+}
+
+/** 채널의 할 일을 (다시) 불러온다. 할 일 패널을 열 때 */
+export async function loadTasks(channelId: string) {
+  const list = await api.tasks(channelId).catch(() => null)
+  if (list) set({ tasks: { ...get().tasks, [channelId]: sortTasks(list) } })
+}
+
+export async function addTask(channelId: string, p: { title: string; assigneeId?: string | null; due?: string | null }) {
+  const task = await guard(api.addTask(channelId, p))
+  if (task) upsertTask(task)
+  return !!task
+}
+
+export async function updateTask(id: string, p: { title?: string; assigneeId?: string | null; due?: string | null; status?: 'open' | 'done' }) {
+  const task = await guard(api.updateTask(id, p))
+  if (task) upsertTask(task)
+}
+
+export async function deleteTask(task: Task) {
+  if (!(await guard(api.deleteTask(task.id)))) return
+  const s = get()
+  const list = s.tasks[task.channelId]
+  set({
+    tasks: list ? { ...s.tasks, [task.channelId]: list.filter((x) => x.id !== task.id) } : s.tasks,
+    myTasks: s.myTasks.filter((x) => x.id !== task.id),
+  })
+}
+
+/** 할 일을 내 에이전트에게 맡긴다(나에게만 지시 → 답은 흘려 보인다) */
+export async function handOffTask(task: Task) {
+  await sendMessage(task.channelId, t('task.handOffPrompt', { title: task.title, id: task.id, due: task.due ?? '' }), 'private')
+  toast(t('handoff.sent'))
+}
+
+/** 채널의 메시지 하나를 내 에이전트에게 맡긴다. note 가 없으면 알아서 처리하게 한다 */
+export async function handOffMessage(m: Message, note: string) {
+  const who = memberName(m.channelId, m.authorId)
+  const author = m.authorKind === 'agent' ? t('common.agentOf', { name: who }) : who
+  const quote = m.body
+    .trim()
+    .slice(0, 1500)
+    .split('\n')
+    .map((l) => '> ' + l)
+    .join('\n')
+  await sendMessage(m.channelId, t('handoff.prompt', { author, id: m.id, quote, note: note.trim() || t('handoff.default') }), 'private')
+  toast(t('handoff.sent'))
 }
 
 export async function answerPermission(id: string, behavior: 'allow' | 'deny') {

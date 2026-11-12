@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Check, Copy, Download, File as FileIcon, FileText, Lock, Send, Undo2, X } from 'lucide-react'
+import { Bot, Check, Copy, Download, File as FileIcon, FileText, Lock, Send, Undo2, X } from 'lucide-react'
 import type { FileMeta, Message } from '@ah/protocol'
 import { fileKind, fmtSize, isImage, saveFile, useFileUrl } from '../lib/files'
 import { systemText, t } from '../lib/i18n'
-import { approveDraft, member, rejectDraft, setCanvas, shareMessage, unshareMessage, useStore } from '../lib/store'
+import { approveDraft, handOffMessage, member, rejectDraft, setCanvas, shareMessage, unshareMessage, useStore } from '../lib/store'
 import { AgentAvatar, Avatar, Button, Markdown, MentionText, agentLabel, cx, timeLabel, useAutosize, useCopy, type MentionMark } from './ui'
 
 function sameGroup(a: Message | undefined, b: Message) {
@@ -22,11 +22,18 @@ function sameGroup(a: Message | undefined, b: Message) {
 
 /** 이 메시지가 부른 사람들(이름이 바뀌어도 지금 이름으로) */
 function marksOf(m: Message, meId: string | undefined): MentionMark[] {
-  return (m.mentions ?? []).flatMap((id) => {
+  const marks: MentionMark[] = (m.mentions ?? []).flatMap((id) => {
     const name = member(m.channelId, id)?.name
     return name ? [{ name, me: id === meId }] : []
   })
+  // @모두 · @all · @everyone: 나도 부른 것
+  const all = EVERYONE.exec(m.body)
+  if (all) marks.push({ name: all[1], me: !!meId && (m.mentions ?? []).includes(meId) })
+  return marks
 }
+
+/** 중계 서버와 같은 규칙 */
+const EVERYONE = /(?:^|[^\p{L}\p{N}_@])@(모두|all|everyone)(?![\p{L}\p{N}_])/iu
 
 export function MessageRow({ m, prev }: { m: Message; prev?: Message }) {
   const me = useStore((s) => s.me)
@@ -135,17 +142,21 @@ export function MessageRow({ m, prev }: { m: Message; prev?: Message }) {
 function Hover({ m }: { m: Message }) {
   const [copied, copy] = useCopy()
   const [busy, setBusy] = useState(false)
+  const [handing, setHanding] = useState(false)
   const meId = useStore((s) => s.me?.id)
+  const hasAgent = useStore((s) => !!s.me?.agentKind)
   if (m.kind !== 'text' || m.status === 'pending') return null
   // 내 에이전트 글은 채널에 공유하거나(나에게만 온 답) 공유를 취소할 수 있다(채널에 나간 글)
   const mineAgent = m.authorKind === 'agent' && m.authorId === meId
+  // 남의 글은 내 에이전트에게 맡길 수 있다
+  const canHandOff = hasAgent && m.authorId !== meId && m.visibility === 'channel'
   const run = async (fn: (id: string) => Promise<void>) => {
     setBusy(true)
     await fn(m.id)
     setBusy(false)
   }
   return (
-    <div className="mt-1 flex h-7 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+    <div className="relative mt-1 flex h-7 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
       <button
         type="button"
         aria-label={t('common.copy')}
@@ -161,7 +172,46 @@ function Hover({ m }: { m: Message }) {
         ) : (
           <HoverAction icon={<Undo2 size={13} />} label={t('message.unshare')} hint={t('message.unshareHint')} busy={busy} onClick={() => run(unshareMessage)} />
         ))}
+      {canHandOff && (
+        <HoverAction icon={<Bot size={13} />} label={t('handoff.button')} hint={t('handoff.placeholder')} busy={busy} onClick={() => setHanding((v) => !v)} />
+      )}
+      {handing && <HandOff m={m} onDone={() => setHanding(false)} />}
     </div>
+  )
+}
+
+/** 남의 메시지를 내 에이전트에게 맡긴다(할 말을 덧붙일 수 있다) */
+function HandOff({ m, onDone }: { m: Message; onDone: () => void }) {
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const go = async () => {
+    setBusy(true)
+    await handOffMessage(m, note)
+    setBusy(false)
+    onDone()
+  }
+  return (
+    <form
+      className="pop-in absolute top-full left-0 z-30 mt-1 flex w-[min(460px,90vw)] items-center gap-1.5 rounded-xl border border-line-2 bg-bg px-2.5 py-1.5 shadow-[0_8px_30px_rgba(0,0,0,0.12)]"
+      onSubmit={(e) => {
+        e.preventDefault()
+        void go()
+      }}
+    >
+      <Bot size={15} className="shrink-0 text-fg-3" />
+      <input
+        autoFocus
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        onKeyDown={(e) => e.key === 'Escape' && onDone()}
+        placeholder={t('handoff.placeholder')}
+        aria-label={t('handoff.placeholder')}
+        className="min-w-0 flex-1 bg-transparent text-[13.5px] outline-none placeholder:text-fg-3"
+      />
+      <Button type="submit" disabled={busy} className="h-7 px-3 text-[12.5px]">
+        {t('handoff.go')}
+      </Button>
+    </form>
   )
 }
 
