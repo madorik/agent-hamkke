@@ -153,6 +153,15 @@ function UpdateNotice() {
         <ArrowUpCircle size={15} className="text-blue" />
         {t('update.ready', { version: u.version ?? '' })}
       </div>
+      {/* 바뀐 것: GitHub 릴리스 노트(브라우저로 연다) */}
+      <a
+        href={`https://github.com/madorik/agent-hamkke/releases/tag/v${u.version ?? ''}`}
+        target="_blank"
+        rel="noreferrer"
+        className="mt-1 block text-[12.5px] text-fg-3 underline-offset-2 hover:text-fg-2 hover:underline"
+      >
+        {t('update.whatsNew')}
+      </a>
       <button
         type="button"
         onClick={() => void installUpdate()}

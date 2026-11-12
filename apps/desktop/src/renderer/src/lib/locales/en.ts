@@ -258,6 +258,7 @@ export const en: typeof ko = {
   'update.downloading': (p) => `Downloading v${p.version} · ${p.percent}%`,
   'update.ready': (p) => `v${p.version} is ready`,
   'update.restart': 'Restart to update',
+  'update.whatsNew': "What's new",
   'update.check': 'Check for updates',
   'update.latest': "You're on the latest version",
   'update.failed': "Couldn't check for updates. Try again in a bit",

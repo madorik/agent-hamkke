@@ -280,6 +280,7 @@ export const ko = {
   'update.downloading': (p: { version: string; percent: number }) => `v${p.version} 받는 중 · ${p.percent}%`,
   'update.ready': (p: { version: string }) => `새 버전 v${p.version} 준비됨`,
   'update.restart': '다시 시작해 업데이트',
+  'update.whatsNew': '무엇이 바뀌었나요',
   'update.check': '업데이트 확인',
   'update.latest': '최신 버전이에요',
   'update.failed': '업데이트를 확인하지 못했어요. 잠시 뒤 다시 해 주세요',
