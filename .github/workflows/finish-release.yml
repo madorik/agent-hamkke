@@ -1,6 +1,7 @@
 # Publishes a draft release once Apple has notarized its macOS builds (see .github/scripts/finish-release.sh).
-# release.yml calls this right after building. If Apple is slow, the schedule below checks again every 30 minutes,
-# so a slow notary service delays the release instead of failing the build. You can also run it by hand.
+# release.yml calls this once right after building and waits up to 45 minutes. If Apple is slower than that,
+# the draft stays a draft: run this workflow by hand later (Actions > Finish release > Run workflow), or
+# publish the draft yourself. There's no schedule: a periodic check kept failing on old drafts and sending mail.
 name: Finish release
 
 on:
@@ -14,8 +15,6 @@ on:
       tag:
         description: Tag to finish, e.g. v0.2.0 (empty = the draft waiting for Apple)
         required: false
-  schedule:
-    - cron: '*/30 * * * *'
 
 permissions:
   contents: write

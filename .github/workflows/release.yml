@@ -163,7 +163,7 @@ jobs:
           gh release delete-asset "$TAG" latest-mac-arm64.yml --yes
           gh release delete-asset "$TAG" latest-mac-x64.yml --yes
 
-  # Apple 이 끝냈으면 바로 공개하고, 아직이면 finish-release.yml 의 30분 주기 확인이 이어받는다.
+  # Apple 이 45분 안에 끝내면 바로 공개한다. 더 늦으면 초안으로 남는다(나중에 Finish release 를 직접 돌리거나 손으로 공개).
   finish:
     needs: [update-info]
     uses: ./.github/workflows/finish-release.yml

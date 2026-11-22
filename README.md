@@ -251,7 +251,7 @@ Releases are built by GitHub Actions (`.github/workflows/release.yml`) when you 
 1. Bump `version` in `apps/desktop/package.json` and commit.
 2. Tag and push: `git tag v0.1.0 && git push origin v0.1.0`. The tag must match the version.
 3. The workflow creates a draft release, builds macOS (arm64 and x64 in parallel, signed) and Windows (x64, unsigned), and uploads them. It sends the macOS builds to Apple for notarization without waiting for the result, so the build finishes in minutes.
-4. The **Finish release** workflow (`.github/workflows/finish-release.yml`) publishes the draft once Apple has notarized both macOS builds. Apple usually takes a few minutes but can take hours when it's busy. Finish release checks again every 30 minutes until Apple is done, then staples the notarization to the `.dmg` files and publishes the release. If Apple rejects a build, Finish release fails and prints Apple's log.
+4. The **Finish release** workflow (`.github/workflows/finish-release.yml`) publishes the draft once Apple has notarized both macOS builds. Apple usually takes a few minutes but can take hours when it's busy. Release runs it once right after the build and waits up to 45 minutes; when Apple is done it staples the notarization to the `.dmg` files and publishes the release. If Apple is slower, run **Finish release** again later from the Actions tab, or publish the draft yourself. If Apple rejects a build, Finish release fails and prints Apple's log.
 
 To build a tag that's already pushed again (for example, after a build error), run **Release** from the Actions tab with that tag.
 

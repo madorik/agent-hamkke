@@ -5,7 +5,7 @@
 # 사용: finish-release.sh <tag> [기다릴 분, 기본 45]
 # 필요한 환경 변수: GH_TOKEN, GH_REPO, APPLE_API_KEY(.p8 파일 경로), APPLE_API_KEY_ID, APPLE_API_ISSUER
 #
-# 끝내는 값: 0 = 공개했거나 아직 Apple 이 확인 중(30분 뒤 Finish release 가 다시 본다)
+# 끝내는 값: 0 = 공개했거나 아직 Apple 이 확인 중(초안으로 남는다. 나중에 Finish release 를 다시 돌린다)
 #           1 = 파일이 빠졌거나 Apple 이 거절했다(사람이 봐야 한다)
 set -euo pipefail
 
@@ -65,7 +65,7 @@ while :; do
   done
   if [ "$waiting" -eq 0 ]; then break; fi
   if [ "$(date +%s)" -ge "$deadline" ]; then
-    echo "::notice::Apple is still checking $tag. The Finish release workflow checks again every 30 minutes and publishes it when Apple is done."
+    echo "::notice::Apple is still checking $tag. It stays a draft: run Finish release again later, or publish it by hand."
     exit 0
   fi
   sleep 60
